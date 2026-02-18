@@ -12,6 +12,7 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<ReorderRecommendation[]>([]);
   const [inventoryFileName, setInventoryFileName] = useState('');
   const [salesFileName, setSalesFileName] = useState('');
+  const [debug, setDebug] = useState<{invCount: number, salesCount: number, sampleInv: string, sampleSales: string} | null>(null);
 
   const handleInventoryUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -25,6 +26,9 @@ export default function Home() {
       const parsed = parseInventoryCSV(text);
       setProducts(parsed.products);
       setInventory(parsed.inventory);
+      
+      const sampleInv = parsed.inventory.slice(0, 3).map(i => `${i.style}-${i.color}-${i.size}`).join(', ');
+      setDebug(prev => ({...(prev || {salesCount: 0, sampleSales: ''}), invCount: parsed.inventory.length, sampleInv}));
       
       // Recalculate if we have sales data
       if (sales.length > 0) {
@@ -47,6 +51,9 @@ export default function Home() {
       const text = e.target?.result as string;
       const parsed = parseSalesCSV(text);
       setSales(parsed);
+      
+      const sampleSales = parsed.slice(0, 3).map(s => `${s.style}-${s.color}-${s.size}`).join(', ');
+      setDebug(prev => ({...(prev || {invCount: 0, sampleInv: ''}), salesCount: parsed.length, sampleSales}));
       
       // Recalculate if we have inventory data
       if (products.length > 0) {
@@ -129,6 +136,19 @@ export default function Home() {
             </ul>
           </div>
         </div>
+
+        {/* Debug Info */}
+        {debug && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-yellow-800 mb-2">Debug Info</h3>
+            <div className="text-sm text-yellow-800">
+              <p>Inventory items parsed: {debug.invCount}</p>
+              <p>Sales records parsed: {debug.salesCount}</p>
+              <p>Sample inventory keys: {debug.sampleInv || 'N/A'}</p>
+              <p>Sample sales keys: {debug.sampleSales || 'N/A'}</p>
+            </div>
+          </div>
+        )}
 
         {/* Summary Stats */}
         {recommendations.length > 0 && (
