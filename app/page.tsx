@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Product, InventoryItem, SaleRecord, ReorderRecommendation } from './types';
 import { parseInventoryCSV, parseSalesCSV } from './utils/csvParser';
 import { calculateRecommendations } from './utils/calculations';
+
+// Manual overrides storage
+interface Overrides {
+  season: Record<string, string>; // key: style, value: season
+  leadTime: Record<string, number>; // key: style, value: days
+  incomingPO: Record<string, number>; // key: style-color-size, value: qty
+}
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -13,6 +20,13 @@ export default function Home() {
   const [inventoryFileName, setInventoryFileName] = useState('');
   const [salesFileName, setSalesFileName] = useState('');
   const [debug, setDebug] = useState<{invCount: number, salesCount: number, sampleInv: string, sampleSales: string} | null>(null);
+  
+  // UI State
+  const [overrides, setOverrides] = useState<Overrides>({ season: {}, leadTime: {}, incomingPO: {} });
+  const [filter, setFilter] = useState<'all' | 'critical' | 'reorder' | 'ok'>('all');
+  const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleInventoryUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -30,15 +44,13 @@ export default function Home() {
       const sampleInv = parsed.inventory.slice(0, 3).map(i => `${i.style}-${i.color}-${i.size}`).join(', ');
       setDebug(prev => ({...(prev || {salesCount: 0, sampleSales: ''}), invCount: parsed.inventory.length, sampleInv}));
       
-      // Recalculate if we have sales data
       if (sales.length > 0) {
-        const recs = calculateRecommendations(parsed.products, parsed.inventory, sales);
-        setRecommendations(recs);
+        recalculate(parsed.products, parsed.inventory, sales, overrides);
       }
     };
     
     reader.readAsText(file);
-  }, [sales]);
+  }, [sales, overrides]);
 
   const handleSalesUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -55,22 +67,70 @@ export default function Home() {
       const sampleSales = parsed.slice(0, 3).map(s => `${s.style}-${s.color}-${s.size}`).join(', ');
       setDebug(prev => ({...(prev || {invCount: 0, sampleInv: ''}), salesCount: parsed.length, sampleSales}));
       
-      // Recalculate if we have inventory data
       if (products.length > 0) {
-        const recs = calculateRecommendations(products, inventory, parsed);
-        setRecommendations(recs);
+        recalculate(products, inventory, parsed, overrides);
       }
     };
     
     reader.readAsText(file);
-  }, [products, inventory]);
+  }, [products, inventory, overrides]);
+
+  const recalculate = (prods: Product[], inv: InventoryItem[], salesData: SaleRecord[], over: Overrides) => {
+    // Apply overrides to products
+    const adjustedProducts = prods.map(p => ({
+      ...p,
+      season: over.season[p.style] || p.season,
+      leadTimeDays: over.leadTime[p.style] || p.leadTimeDays
+    }));
+    
+    // Apply overrides to inventory (incoming PO)
+    const adjustedInventory = inv.map(i => {
+      const key = `${i.style}-${i.color}-${i.size}`;
+      return {
+        ...i,
+        incomingQty: over.incomingPO[key] || i.incomingQty
+      };
+    });
+    
+    const recs = calculateRecommendations(adjustedProducts, adjustedInventory, salesData);
+    setRecommendations(recs);
+  };
+
+  const handleSetSeason = (style: string, season: string) => {
+    const newOverrides = {
+      ...overrides,
+      season: { ...overrides.season, [style]: season }
+    };
+    setOverrides(newOverrides);
+    recalculate(products, inventory, sales, newOverrides);
+  };
+
+  const handleSetLeadTime = (style: string, days: number) => {
+    const newOverrides = {
+      ...overrides,
+      leadTime: { ...overrides.leadTime, [style]: days }
+    };
+    setOverrides(newOverrides);
+    recalculate(products, inventory, sales, newOverrides);
+  };
+
+  const handleSetIncomingPO = (key: string, qty: number) => {
+    const newOverrides = {
+      ...overrides,
+      incomingPO: { ...overrides.incomingPO, [key]: qty }
+    };
+    setOverrides(newOverrides);
+    recalculate(products, inventory, sales, newOverrides);
+    setEditingItem(null);
+  };
 
   const handleExport = () => {
     const coreRecs = recommendations.filter(r => r.isCore && r.suggestedQty > 0);
     
-    let csv = 'Style,Color,Size,Current Stock,Daily Velocity,Days Until Stockout,Suggested Qty,Reason\n';
+    let csv = 'Style,Color,Size,Current Stock,Incoming PO,Available,Daily Velocity,Days Until Stockout,Suggested Qty,Reason,Vendor\n';
     for (const r of coreRecs) {
-      csv += `"${r.style}","${r.color}","${r.size}",${r.currentStock},${r.dailyVelocity.toFixed(2)},${r.daysUntilStockout},${r.suggestedQty},"${r.reason}"\n`;
+      const product = products.find(p => p.style === r.style && p.color === r.color && p.size === r.size);
+      csv += `"${r.style}","${r.color}","${r.size}",${r.currentStock},${product?.vendor || ''},${r.currentStock},${r.dailyVelocity.toFixed(2)},${r.daysUntilStockout},${r.suggestedQty},"${r.reason}"\n`;
     }
     
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -81,8 +141,24 @@ export default function Home() {
     a.click();
   };
 
+  // Filter and sort recommendations
+  const filteredRecommendations = useMemo(() => {
+    let filtered = recommendations.filter(r => r.isCore);
+    
+    if (filter === 'critical') filtered = filtered.filter(r => r.suggestedQty > 0 && r.daysUntilStockout < 60);
+    else if (filter === 'reorder') filtered = filtered.filter(r => r.suggestedQty > 0);
+    else if (filter === 'ok') filtered = filtered.filter(r => r.suggestedQty === 0);
+    
+    if (sortBy === 'days') filtered.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
+    else if (sortBy === 'velocity') filtered.sort((a, b) => b.dailyVelocity - a.dailyVelocity);
+    else if (sortBy === 'stock') filtered.sort((a, b) => a.currentStock - b.currentStock);
+    
+    return filtered;
+  }, [recommendations, filter, sortBy]);
+
   const criticalCount = recommendations.filter(r => r.isCore && r.suggestedQty > 0).length;
   const coreItems = recommendations.filter(r => r.isCore);
+  const uniqueStyles = Array.from(new Set(recommendations.map(r => r.style)));
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -128,14 +204,71 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="mt-4 p-4 bg-blue-50 rounded text-sm text-blue-800">
-            <p><strong>Expected Files:</strong></p>
-            <ul className="list-disc ml-5 mt-1">
-              <li>Inventory: ApparelMagic Current Inventory export (Style/Color/Size matrix)</li>
-              <li>Sales: ApparelMagic Sales report (Style, Color, Size, Units, Net Sales)</li>
-            </ul>
+          <div className="mt-4 flex gap-4">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >
+              {showSettings ? 'Hide' : 'Show'} Settings
+            </button>
+            
+            {recommendations.length > 0 && (
+              <button
+                onClick={handleExport}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Export Reorder Plan ({criticalCount} items)
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Settings Panel */}
+        {showSettings && uniqueStyles.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Settings ({uniqueStyles.length} styles)</h2>
+            
+            <div className="overflow-x-auto max-h-96">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Style</th>
+                    <th className="px-4 py-2 text-left">Season</th>
+                    <th className="px-4 py-2 text-left">Lead Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uniqueStyles.slice(0, 50).map(style => (
+                    <tr key={style}>
+                      <td className="px-4 py-2 font-medium">{style}</td>
+                      <td className="px-4 py-2">
+                        <select
+                          value={overrides.season[style] || 'Core'}
+                          onChange={(e) => handleSetSeason(style, e.target.value)}
+                          className="border rounded px-2 py-1"
+                        >
+                          <option value="Core">Core</option>
+                          <option value="AW26">AW26</option>
+                          <option value="SS26">SS26</option>
+                          <option value="Seasonal">Seasonal</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          value={overrides.leadTime[style] || 90}
+                          onChange={(e) => handleSetLeadTime(style, parseInt(e.target.value) || 90)}
+                          className="border rounded px-2 py-1 w-20"
+                        />
+                        days
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Debug Info */}
         {debug && (
@@ -172,21 +305,45 @@ export default function Home() {
           </div>
         )}
 
-        {/* Action List */}
+        {/* Filters */}
         {recommendations.length > 0 && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Action List</h2>
-              {criticalCount > 0 && (
-                <button
-                  onClick={handleExport}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Export Reorder Plan ({criticalCount} items)
-                </button>
-              )}
+          <div className="bg-white rounded-lg shadow p-4 mb-6 flex gap-4 items-center">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mr-2">Filter:</label>
+              <select
+                value={filter}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilter(e.target.value as 'all' | 'critical' | 'reorder' | 'ok')}
+                className="border rounded px-3 py-2"
+              >
+                <option value="all">All Core Items</option>
+                <option value="critical">Critical (&lt;60 days)</option>
+                <option value="reorder">All Need Reorder</option>
+                <option value="ok">Stock OK</option>
+              </select>
             </div>
             
+            <div>
+              <label className="text-sm font-medium text-gray-700 mr-2">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortBy(e.target.value as 'days' | 'velocity' | 'stock')}
+                className="border rounded px-3 py-2"
+              >
+                <option value="days">Days Until Stockout</option>
+                <option value="velocity">Sales Velocity</option>
+                <option value="stock">Current Stock</option>
+              </select>
+            </div>
+            
+            <div className="ml-auto text-sm text-gray-600">
+              Showing {filteredRecommendations.length} of {coreItems.length} Core items
+            </div>
+          </div>
+        )}
+
+        {/* Action List */}
+        {filteredRecommendations.length > 0 && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead className="bg-gray-50">
@@ -194,6 +351,7 @@ export default function Home() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Incoming PO</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Daily Sales</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Days Left</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reorder Qty</th>
@@ -201,10 +359,12 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {recommendations
-                    .filter(r => r.isCore) // Only show Core items
-                    .map((rec) => (
-                    <tr key={`${rec.style}-${rec.color}-${rec.size}`} className={rec.suggestedQty > 0 ? 'bg-red-50' : ''}>
+                  {filteredRecommendations.map((rec) => {
+                    const key = `${rec.style}-${rec.color}-${rec.size}`;
+                    const incoming = overrides.incomingPO[key] || 0;
+                    
+                    return (
+                    <tr key={key} className={rec.suggestedQty > 0 ? 'bg-red-50' : ''}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{rec.style}</div>
                         <div className="text-sm text-gray-500">{rec.color} / {rec.size}</div>
@@ -216,6 +376,25 @@ export default function Home() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <span className="text-sm text-gray-900">{rec.currentStock}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        {editingItem === key ? (
+                          <input
+                            type="number"
+                            defaultValue={incoming}
+                            onBlur={(e) => handleSetIncomingPO(key, parseInt(e.target.value) || 0)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSetIncomingPO(key, parseInt((e.target as HTMLInputElement).value) || 0)}
+                            className="w-16 border rounded px-2 py-1 text-right"
+                            autoFocus
+                          />
+                        ) : (
+                          <button
+                            onClick={() => setEditingItem(key)}
+                            className="text-sm text-blue-600 hover:text-blue-800"
+                          >
+                            {incoming || '—'}
+                          </button>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <span className="text-sm text-gray-900">{rec.dailyVelocity.toFixed(2)}</span>
@@ -249,7 +428,7 @@ export default function Home() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
