@@ -117,11 +117,32 @@ export function parseSalesCSV(csvText: string): SaleRecord[] {
   });
   
   for (const row of result.data as Record<string, string>[]) {
-    const style = row['Style']?.trim();
-    if (!style || style === 'Total') continue;
+    const rawStyle = row['Style']?.trim();
+    if (!rawStyle || rawStyle === 'Total') continue;
     
-    const color = row['Color']?.trim() || '';
+    // Extract base style and color from Style field
+    // Style format can be: "SW0173" or "SW0173-BLK" or "AC0001-BLK"
+    let style = rawStyle;
+    let color = row['Color']?.trim() || '';
+    
+    // If style contains a dash, it might have color embedded
+    // Check if the part after dash matches the Color column
+    if (rawStyle.includes('-')) {
+      const parts = rawStyle.split('-');
+      const potentialStyle = parts[0];
+      const potentialColor = parts[1];
+      
+      // If the color column matches or is empty, use the base style
+      if (!color || color === potentialColor) {
+        style = potentialStyle;
+        color = potentialColor;
+      }
+    }
+    
+    // Skip rows without size (these are rollups/totals)
     const size = row['Size']?.trim() || '';
+    if (!size) continue;
+    
     const units = parseInt(row['Units']) || 0;
     const netSales = parseFloat(row['Net Sales']?.replace('$', '').replace(',', '') || '0');
     
@@ -130,7 +151,7 @@ export function parseSalesCSV(csvText: string): SaleRecord[] {
       color,
       size,
       units,
-      date: new Date().toISOString().split('T')[0], // Using current date for Jan data
+      date: new Date().toISOString().split('T')[0],
       netSales
     });
   }
