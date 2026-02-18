@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OTB Live - Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: system-ui; max-width: 1200px; margin: 0 auto; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f5f5f5; }
+    .critical { background: #fee; color: #c00; }
+    .warning { background: #ffeaa7; }
+    .ok { background: #d4edda; }
+    input { margin: 10px 0; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+    .stat-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .stat-box h3 { margin: 0; font-size: 24px; }
+    .stat-box p { margin: 5px 0 0; color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>OTB Live - Inventory Planning</h1>
+  
+  <div>
+    <label><strong>Inventory CSV:</strong></label><br>
+    <input type="file" id="invFile" accept=".csv">
+  </div>
+  
+  <div>
+    <label><strong>Sales CSV:</strong></label><br>
+    <input type="file" id="salesFile" accept=".csv">
+  </div>
+  
+  <div id="stats" class="stats" style="display:none;"></div>
+  <div id="results"></div>
+
+  <script>
+    let inventory = [];
+    let sales = [];
+    
+    const LEAD_TIME = 90;
+    const BUFFER = 14;
+    const COVERAGE = LEAD_TIME + BUFFER;
+    
+    document.getElementById('invFile').addEventListener('change', function(e) {
+      Papa.parse(e.target.files[0], {
+        header: true,
+        complete: function(results) {
+          inventory = parseInventory(results.data);
+          calculate();
+        }
+      });
+    });
+    
+    document.getElementById('salesFile').addEventListener('change', function(e) {
+      Papa.parse(e.target.files[0], {
+        header: true,
+        complete: function(results) {
+          sales = parseSales(results.data);
+          calculate();
+        }
+      });
+    });
+    
+    function parseInventory(data) {
+      const items = [];
+      let currentStyle = '';
+      let currentColor = '';
+      
+      for (const row of data) {
+        const style = row['Style']?.trim();
+        const color = row['Color']?.trim();
+        
+        if (style === 'Total') continue;
+        if (style && !color) { currentStyle = style; continue; }
+        if (style && color) { currentStyle = style; currentColor = color; }
+        else if (color && !style) { currentColor = color; }
+        
+        const sizes = Object.keys(row).filter(k => 
+          !['Style','Color','Other','Avg','Units','Value',''].includes(k) && row[k]?.trim()
+        );
+        
+        for (const size of sizes) {
+          const qty = parseInt(row[size]) || 0;
+          const cost = parseFloat(row['Avg']?.replace(/[$,]/g,'') || '0');
+          items.push({ style: currentStyle, color: currentColor, size, qty, cost });
+        }
+      }
+      return items;
+    }
+    
+    function parseSales(data) {
+      const items = [];
+      for (const row of data) {
+        if (row['Style'] === 'Total') continue;
+        items.push({
+          style: row['Style']?.trim(),
+          color: row['Color']?.trim() || '',
+          size: row['Size']?.trim() || '',
+          units: parseInt(row['Units']) || 0
+        });
+      }
+      return items;
+    }
+    
+    function calculate() {
+      if (!inventory.length || !sales.length) return;
+      
+      // Calculate velocity
+      const velocity = {};
+      for (const s of sales) {
+        const key = s.style + '-' + s.color + '-' + s.size;
+        velocity[key] = (velocity[key] || 0) + s.units;
+      }
+      for (const k in velocity) {
+        velocity[k] = velocity[k] / 30; // daily velocity
+      }
+      
+      // Calculate recommendations
+      const recs = [];
+      for (const inv of inventory) {
+        const key = inv.style + '-' + inv.color + '-' + inv.size;
+        const vel = velocity[key] || 0;
+        const daysLeft = vel > 0 ? inv.qty / vel : Infinity;
+        const needed = vel > 0 ? Math.ceil(vel * COVERAGE) : 0;
+        const suggest = needed > inv.qty ? needed - inv.qty : 0;
+        
+        recs.push({
+          ...inv,
+          velocity: vel,
+          daysLeft: Math.floor(daysLeft),
+          suggest,
+          status: suggest > 0 ? (daysLeft < 60 ? 'CRITICAL' : 'Reorder') : 'OK'
+        });
+      }
+      
+      // Sort: suggestions first
+      recs.sort((a,b) => (b.suggest > 0) - (a.suggest > 0) || a.daysLeft - b.daysLeft);
+      
+      display(recs);
+    }
+    
+    function display(recs) {
+      const critical = recs.filter(r => r.suggest > 0).length;
+      document.getElementById('stats').style.display = 'grid';
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-box"><h3>${recs.length}</h3><p>Total SKUs</p></div>
+        <div class="stat-box"><h3>${critical}</h3><p style="color:red">Need Reorder</p></div>
+        <div class="stat-box"><h3>90d</h3><p>Lead Time</p></div>
+        <div class="stat-box"><h3>104d</h3><p>Coverage</p></div>
+      `;
+      
+      let html = '<table><tr><th>SKU</th><th>Stock</th><th>Daily Sales</th><th>Days Left</th><th>Reorder</th><th>Status</th></tr>';
+      for (const r of recs) {
+        const cls = r.status === 'CRITICAL' ? 'critical' : r.status === 'Reorder' ? 'warning' : 'ok';
+        html += `<tr class="${cls}">
+          <td>${r.style}<br><small>${r.color} / ${r.size}</small></td>
+          <td>${r.qty}</td>
+          <td>${r.velocity.toFixed(2)}</td>
+          <td>${r.daysLeft === Infinity ? '∞' : r.daysLeft}</td>
+          <td>${r.suggest || '-'}</td>
+          <td><strong>${r.status}</strong></td>
+        </tr>`;
+      }
+      html += '</table>';
+      document.getElementById('results').innerHTML = html;
+    }
+  </script>
+</body>
+</html>
