@@ -49,3 +49,50 @@ export interface ReorderRecommendation {
   reason: string;
   isCore: boolean;
 }
+
+// Phase 2 Features
+export interface SizeCurve {
+  size: string;
+  ratio: number; // e.g., 0.25 = 25% of total
+  count: number;
+}
+
+export interface StyleSizeProfile {
+  style: string;
+  totalSold: number;
+  sizeDistribution: SizeCurve[];
+}
+
+export interface VendorSummary {
+  vendor: string;
+  styles: string[];
+  totalQty: number;
+  totalCost: number;
+  items: ReorderRecommendation[];
+}
+
+export interface PODraft {
+  poNumber: string;
+  vendor: string;
+  date: string;
+  items: {
+    style: string;
+    color: string;
+    size: string;
+    qty: number;
+    cost: number;
+  }[];
+  totalQty: number;
+  totalCost: number;
+}
+
+export interface InventoryHealth {
+  totalSKUs: number;
+  coreSKUs: number;
+  criticalCount: number;
+  reorderCount: number;
+  okCount: number;
+  deadStockCount: number; // 90+ days, 0 sales
+  avgWeeksOfSupply: number;
+  totalInventoryValue: number;
+}

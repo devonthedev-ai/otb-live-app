@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Product, InventoryItem, SaleRecord, ReorderRecommendation } from './types';
 import { parseInventoryCSV, parseSalesCSV } from './utils/csvParser';
 import { calculateRecommendations } from './utils/calculations';
+import { groupByVendor, calculateInventoryHealth } from './utils/advancedCalculations';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
 // Manual overrides storage
@@ -31,6 +32,7 @@ export default function Home() {
   // UI State (not persisted)
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeView, setActiveView] = useState<'items' | 'vendors' | 'dashboard'>('items');
 
   const handleInventoryUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -166,6 +168,16 @@ export default function Home() {
   const criticalCount = recommendations.filter(r => r.isCore && r.suggestedQty > 0).length;
   const coreItems = recommendations.filter(r => r.isCore);
   const uniqueStyles = Array.from(new Set(recommendations.map(r => r.style)));
+  
+  // Phase 2: Vendor and health calculations
+  const vendorSummaries = useMemo(() => 
+    groupByVendor(recommendations, products), 
+    [recommendations, products]
+  );
+  const health = useMemo(() => 
+    calculateInventoryHealth(recommendations, products), 
+    [recommendations, products]
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -320,132 +332,302 @@ export default function Home() {
           </div>
         )}
 
-        {/* Filters */}
+        {/* View Toggle */}
         {recommendations.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-4 mb-6 flex gap-4 items-center">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mr-2">Filter:</label>
-              <select
-                value={filter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilter(e.target.value as 'all' | 'critical' | 'reorder' | 'ok')}
-                className="border rounded px-3 py-2"
-              >
-                <option value="all">All Core Items</option>
-                <option value="critical">Critical (&lt;60 days)</option>
-                <option value="reorder">All Need Reorder</option>
-                <option value="ok">Stock OK</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium text-gray-700 mr-2">Sort by:</label>
-              <select
-                value={sortBy}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortBy(e.target.value as 'days' | 'velocity' | 'stock')}
-                className="border rounded px-3 py-2"
-              >
-                <option value="days">Days Until Stockout</option>
-                <option value="velocity">Sales Velocity</option>
-                <option value="stock">Current Stock</option>
-              </select>
-            </div>
-            
-            <div className="ml-auto text-sm text-gray-600">
-              Showing {filteredRecommendations.length} of {coreItems.length} Core items
-            </div>
+          <div className="bg-white rounded-lg shadow p-2 mb-6 flex gap-2">
+            <button
+              onClick={() => setActiveView('items')}
+              className={`px-4 py-2 rounded ${activeView === 'items' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+            >
+              Item View
+            </button>
+            <button
+              onClick={() => setActiveView('vendors')}
+              className={`px-4 py-2 rounded ${activeView === 'vendors' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+            >
+              Vendor View ({vendorSummaries.length})
+            </button>
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`px-4 py-2 rounded ${activeView === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+            >
+              Dashboard
+            </button>
           </div>
         )}
 
-        {/* Action List */}
-        {filteredRecommendations.length > 0 && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Incoming PO</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Daily Sales</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Days Left</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reorder Qty</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredRecommendations.map((rec) => {
-                    const key = `${rec.style}-${rec.color}-${rec.size}`;
-                    const incoming = overrides.incomingPO[key] || 0;
-                    
-                    return (
-                    <tr key={key} className={rec.suggestedQty > 0 ? 'bg-red-50' : ''}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{rec.style}</div>
-                        <div className="text-sm text-gray-500">{rec.color} / {rec.size}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                          Core
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <span className="text-sm text-gray-900">{rec.currentStock}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        {editingItem === key ? (
-                          <input
-                            type="number"
-                            defaultValue={incoming}
-                            onBlur={(e) => handleSetIncomingPO(key, parseInt(e.target.value) || 0)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSetIncomingPO(key, parseInt((e.target as HTMLInputElement).value) || 0)}
-                            className="w-16 border rounded px-2 py-1 text-right"
-                            autoFocus
-                          />
-                        ) : (
-                          <button
-                            onClick={() => setEditingItem(key)}
-                            className="text-sm text-blue-600 hover:text-blue-800"
-                          >
-                            {incoming || '—'}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <span className="text-sm text-gray-900">{rec.dailyVelocity.toFixed(2)}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <span className={`text-sm font-medium ${
-                          rec.daysUntilStockout < 60 ? 'text-red-600' : 
-                          rec.daysUntilStockout < 104 ? 'text-yellow-600' : 'text-green-600'
-                        }`}>
-                          {rec.daysUntilStockout === Infinity ? '∞' : rec.daysUntilStockout}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        {rec.suggestedQty > 0 ? (
-                          <span className="text-sm font-bold text-red-600">{rec.suggestedQty}</span>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {rec.suggestedQty > 0 ? (
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            rec.daysUntilStockout < 60 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {rec.daysUntilStockout < 60 ? 'CRITICAL' : 'Reorder'}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                            OK
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );})}
-                </tbody>
-              </table>
+        {/* Content Based on Active View */}
+        {activeView === 'items' && (
+          <>
+            {/* Filters */}
+            {recommendations.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-4 mb-6 flex gap-4 items-center">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mr-2">Filter:</label>
+                  <select
+                    value={filter}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilter(e.target.value as 'all' | 'critical' | 'reorder' | 'ok')}
+                    className="border rounded px-3 py-2"
+                  >
+                    <option value="all">All Core Items</option>
+                    <option value="critical">Critical (&lt;60 days)</option>
+                    <option value="reorder">All Need Reorder</option>
+                    <option value="ok">Stock OK</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mr-2">Sort by:</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortBy(e.target.value as 'days' | 'velocity' | 'stock')}
+                    className="border rounded px-3 py-2"
+                  >
+                    <option value="days">Days Until Stockout</option>
+                    <option value="velocity">Sales Velocity</option>
+                    <option value="stock">Current Stock</option>
+                  </select>
+                </div>
+                
+                <div className="ml-auto text-sm text-gray-600">
+                  Showing {filteredRecommendations.length} of {coreItems.length} Core items
+                </div>
+              </div>
+            )}
+
+            {/* Action List */}
+            {filteredRecommendations.length > 0 && (
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Incoming PO</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Daily Sales</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Days Left</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reorder Qty</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredRecommendations.map((rec) => {
+                        const key = `${rec.style}-${rec.color}-${rec.size}`;
+                        const incoming = overrides.incomingPO[key] || 0;
+                        
+                        return (
+                        <tr key={key} className={rec.suggestedQty > 0 ? 'bg-red-50' : ''}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{rec.style}</div>
+                            <div className="text-sm text-gray-500">{rec.color} / {rec.size}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                              Core
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <span className="text-sm text-gray-900">{rec.currentStock}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            {editingItem === key ? (
+                              <input
+                                type="number"
+                                defaultValue={incoming}
+                                onBlur={(e) => handleSetIncomingPO(key, parseInt(e.target.value) || 0)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSetIncomingPO(key, parseInt((e.target as HTMLInputElement).value) || 0)}
+                                className="w-16 border rounded px-2 py-1 text-right"
+                                autoFocus
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setEditingItem(key)}
+                                className="text-sm text-blue-600 hover:text-blue-800"
+                              >
+                                {incoming || '—'}
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <span className="text-sm text-gray-900">{rec.dailyVelocity.toFixed(2)}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <span className={`text-sm font-medium ${
+                              rec.daysUntilStockout < 60 ? 'text-red-600' : 
+                              rec.daysUntilStockout < 104 ? 'text-yellow-600' : 'text-green-600'
+                            }`}>
+                              {rec.daysUntilStockout === Infinity ? '∞' : rec.daysUntilStockout}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            {rec.suggestedQty > 0 ? (
+                              <span className="text-sm font-bold text-red-600">{rec.suggestedQty}</span>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {rec.suggestedQty > 0 ? (
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                rec.daysUntilStockout < 60 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {rec.daysUntilStockout < 60 ? 'CRITICAL' : 'Reorder'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                                OK
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );})}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeView === 'vendors' && (
+          <div className="space-y-4">
+            {vendorSummaries.length === 0 ? (
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                No vendor data available. Make sure to tag Core items and set vendors in Settings.
+              </div>
+            ) : (
+              vendorSummaries.map((vendor) => (
+                <div key={vendor.vendor} className="bg-white rounded-lg shadow overflow-hidden">
+                  <div className="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+                    <div>
+                      <h3 className="text-lg font-semibold">{vendor.vendor}</h3>
+                      <p className="text-sm text-gray-600">{vendor.styles.length} styles · {vendor.items.length} SKUs</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold">{vendor.totalQty} units</p>
+                      <p className="text-sm text-gray-600">${vendor.totalCost.toLocaleString()} total</p>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left">Style</th>
+                          <th className="px-4 py-2 text-left">Color/Size</th>
+                          <th className="px-4 py-2 text-right">Stock</th>
+                          <th className="px-4 py-2 text-right">Daily</th>
+                          <th className="px-4 py-2 text-right">Days Left</th>
+                          <th className="px-4 py-2 text-right">Qty</th>
+                          <th className="px-4 py-2 text-right">Est. Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vendor.items.map((item) => {
+                          const product = products.find(p => p.style === item.style && p.color === item.color && p.size === item.size);
+                          const cost = product?.cost || 0;
+                          return (
+                            <tr key={`${item.style}-${item.color}-${item.size}`} className="border-t">
+                              <td className="px-4 py-2 font-medium">{item.style}</td>
+                              <td className="px-4 py-2 text-gray-600">{item.color} / {item.size}</td>
+                              <td className="px-4 py-2 text-right">{item.currentStock}</td>
+                              <td className="px-4 py-2 text-right">{item.dailyVelocity.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-right">
+                                <span className={item.daysUntilStockout < 60 ? 'text-red-600 font-medium' : ''}>
+                                  {item.daysUntilStockout === Infinity ? '∞' : item.daysUntilStockout}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-bold">{item.suggestedQty}</td>
+                              <td className="px-4 py-2 text-right">${(item.suggestedQty * cost).toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {activeView === 'dashboard' && (
+          <div className="space-y-6">
+            {/* Health Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Stock Status</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-red-600">Critical (&lt;60 days)</span>
+                    <span className="font-bold">{health.criticalCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-yellow-600">Need Reorder</span>
+                    <span className="font-bold">{health.reorderCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-green-600">Stock OK</span>
+                    <span className="font-bold">{health.okCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Inventory Health</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Avg Weeks of Supply</span>
+                    <span className="font-bold">{health.avgWeeksOfSupply}w</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Dead Stock (0 sales)</span>
+                    <span className="font-bold text-orange-600">{health.deadStockCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Inventory Value</span>
+                    <span className="font-bold">${health.totalInventoryValue.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">SKU Breakdown</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Total SKUs</span>
+                    <span className="font-bold">{health.totalSKUs}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Core Items</span>
+                    <span className="font-bold">{health.coreSKUs}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Active Vendors</span>
+                    <span className="font-bold">{vendorSummaries.length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Vendor Summary */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Top Vendors by Reorder Value</h3>
+              <div className="space-y-2">
+                {vendorSummaries.slice(0, 5).map((vendor) => (
+                  <div key={vendor.vendor} className="flex justify-between items-center py-2 border-b">
+                    <div>
+                      <span className="font-medium">{vendor.vendor}</span>
+                      <span className="text-gray-500 text-sm ml-2">({vendor.styles.length} styles)</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold">${vendor.totalCost.toLocaleString()}</span>
+                      <span className="text-gray-500 text-sm ml-2">{vendor.totalQty} units</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
