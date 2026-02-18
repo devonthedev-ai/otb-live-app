@@ -2,9 +2,7 @@
 
 import { Product, InventoryItem, SaleRecord, ReorderRecommendation } from '../types';
 
-const LEAD_TIME_DAYS = 90;
 const SAFETY_BUFFER_DAYS = 14;
-const TOTAL_COVERAGE_DAYS = LEAD_TIME_DAYS + SAFETY_BUFFER_DAYS; // 104 days
 
 export function calculateRecommendations(
   products: Product[],
@@ -13,8 +11,14 @@ export function calculateRecommendations(
 ): ReorderRecommendation[] {
   const recommendations: ReorderRecommendation[] = [];
   
+  // Calculate actual date range from sales data
+  const dates = sales.map(s => new Date(s.date)).filter(d => !isNaN(d.getTime()));
+  const daysInPeriod = dates.length > 1 
+    ? Math.max(1, Math.ceil((Math.max(...dates.map(d => d.getTime())) - Math.min(...dates.map(d => d.getTime()))) / (1000 * 60 * 60 * 24)))
+    : 30; // fallback to 30 days if no valid dates
+  
   // Calculate velocity per SKU from sales data
-  const velocityMap = new Map<string, number>(); // key: style-color-size, value: daily velocity
+  const velocityMap = new Map<string, number>();
   const skuSales = new Map<string, number>();
   
   // Aggregate sales by SKU
@@ -23,10 +27,9 @@ export function calculateRecommendations(
     skuSales.set(key, (skuSales.get(key) || 0) + sale.units);
   }
   
-  // Calculate daily velocity (assuming 30 days of sales data)
-  const DAYS_IN_PERIOD = 30;
+  // Calculate daily velocity using actual date range
   skuSales.forEach((units, key) => {
-    velocityMap.set(key, units / DAYS_IN_PERIOD);
+    velocityMap.set(key, units / daysInPeriod);
   });
   
   // Process each inventory item
@@ -40,6 +43,8 @@ export function calculateRecommendations(
     
     // Only recommend for Core items
     const isCore = product.season === 'Core';
+    const leadTimeDays = product.leadTimeDays || 90;
+    const totalCoverageDays = leadTimeDays + SAFETY_BUFFER_DAYS;
     
     const dailyVelocity = velocityMap.get(key) || 0;
     const availableStock = inv.onHand - inv.reservedQty + inv.incomingQty;
@@ -55,14 +60,14 @@ export function calculateRecommendations(
     
     if (isCore && dailyVelocity > 0) {
       // Need to cover lead time + buffer
-      const projectedDemand = Math.ceil(dailyVelocity * TOTAL_COVERAGE_DAYS);
+      const projectedDemand = Math.ceil(dailyVelocity * totalCoverageDays);
       
       if (availableStock < projectedDemand) {
         suggestedQty = projectedDemand - availableStock;
         
-        if (daysUntilStockout < LEAD_TIME_DAYS) {
+        if (daysUntilStockout < leadTimeDays) {
           reason = `Stockout in ${Math.floor(daysUntilStockout)} days - CRITICAL`;
-        } else if (daysUntilStockout < TOTAL_COVERAGE_DAYS) {
+        } else if (daysUntilStockout < totalCoverageDays) {
           reason = `Below safety stock (${Math.floor(daysUntilStockout)} days supply)`;
         } else {
           reason = 'Below optimal level';
@@ -95,7 +100,7 @@ export function calculateRecommendations(
 }
 
 export function getStockoutRiskClass(daysUntilStockout: number): string {
-  if (daysUntilStockout < 60) return 'bg-red-100 text-red-800'; // Critical - less than 2 months
-  if (daysUntilStockout < 104) return 'bg-yellow-100 text-yellow-800'; // Warning - below coverage
-  return 'bg-green-100 text-green-800'; // OK
+  if (daysUntilStockout < 60) return 'bg-red-100 text-red-800';
+  if (daysUntilStockout < 104) return 'bg-yellow-100 text-yellow-800';
+  return 'bg-green-100 text-green-800';
 }

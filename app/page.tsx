@@ -4,12 +4,13 @@ import { useState, useCallback, useMemo } from 'react';
 import { Product, InventoryItem, SaleRecord, ReorderRecommendation } from './types';
 import { parseInventoryCSV, parseSalesCSV } from './utils/csvParser';
 import { calculateRecommendations } from './utils/calculations';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 // Manual overrides storage
 interface Overrides {
-  season: Record<string, string>; // key: style, value: season
-  leadTime: Record<string, number>; // key: style, value: days
-  incomingPO: Record<string, number>; // key: style-color-size, value: qty
+  season: Record<string, string>;
+  leadTime: Record<string, number>;
+  incomingPO: Record<string, number>;
 }
 
 export default function Home() {
@@ -19,12 +20,15 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<ReorderRecommendation[]>([]);
   const [inventoryFileName, setInventoryFileName] = useState('');
   const [salesFileName, setSalesFileName] = useState('');
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [debug, setDebug] = useState<{invCount: number, salesCount: number, sampleInv: string, sampleSales: string} | null>(null);
   
-  // UI State
-  const [overrides, setOverrides] = useState<Overrides>({ season: {}, leadTime: {}, incomingPO: {} });
-  const [filter, setFilter] = useState<'all' | 'critical' | 'reorder' | 'ok'>('all');
-  const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
+  // Persisted state
+  const [overrides, setOverrides] = useLocalStorage<Overrides>('otb-overrides', { season: {}, leadTime: {}, incomingPO: {} });
+  const [filter, setFilter] = useLocalStorage<'all' | 'critical' | 'reorder' | 'ok'>('otb-filter', 'all');
+  const [sortBy, setSortBy] = useLocalStorage<'days' | 'velocity' | 'stock'>('otb-sort', 'days');
+  
+  // UI State (not persisted)
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -102,6 +106,7 @@ export default function Home() {
       season: { ...overrides.season, [style]: season }
     };
     setOverrides(newOverrides);
+    setLastSaved(new Date().toLocaleTimeString());
     recalculate(products, inventory, sales, newOverrides);
   };
 
@@ -111,6 +116,7 @@ export default function Home() {
       leadTime: { ...overrides.leadTime, [style]: days }
     };
     setOverrides(newOverrides);
+    setLastSaved(new Date().toLocaleTimeString());
     recalculate(products, inventory, sales, newOverrides);
   };
 
@@ -120,6 +126,7 @@ export default function Home() {
       incomingPO: { ...overrides.incomingPO, [key]: qty }
     };
     setOverrides(newOverrides);
+    setLastSaved(new Date().toLocaleTimeString());
     recalculate(products, inventory, sales, newOverrides);
     setEditingItem(null);
   };
@@ -163,9 +170,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">OTB Live</h1>
-          <p className="text-gray-600">Open-to-Buy Inventory Planning for ApparelMagic</p>
+        <header className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">OTB Live</h1>
+            <p className="text-gray-600">Open-to-Buy Inventory Planning for ApparelMagic</p>
+          </div>
+          {lastSaved && (
+            <div className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded">
+              ✓ Settings auto-saved at {lastSaved}
+            </div>
+          )}
         </header>
 
         {/* Upload Section */}
@@ -300,7 +314,8 @@ export default function Home() {
             </div>
             <div className="bg-white rounded-lg shadow p-4">
               <p className="text-sm text-gray-600">Coverage</p>
-              <p className="text-sm">90d lead + 14d buffer</p>
+              <p className="text-sm">Lead time varies by style</p>
+              <p className="text-xs text-gray-500">+ 14d safety buffer</p>
             </div>
           </div>
         )}
