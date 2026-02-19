@@ -207,7 +207,7 @@ export default function Home() {
                 type="file"
                 accept=".csv"
                 onChange={handleInventoryUpload}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
               {inventoryFileName && (
                 <p className="text-sm text-green-600 mt-1">✓ {inventoryFileName}</p>
@@ -222,7 +222,7 @@ export default function Home() {
                 type="file"
                 accept=".csv"
                 onChange={handleSalesUpload}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
               {salesFileName && (
                 <p className="text-sm text-green-600 mt-1">✓ {salesFileName}</p>
@@ -327,7 +327,7 @@ export default function Home() {
             <div className="bg-white rounded-lg shadow p-4">
               <p className="text-sm text-gray-600">Coverage</p>
               <p className="text-sm">Lead time varies by style</p>
-              <p className="text-xs text-gray-500">+ 14d safety buffer</p>
+              <p className="text-xs text-gray-700">+ 14d safety buffer</p>
             </div>
           </div>
         )}
@@ -402,14 +402,14 @@ export default function Home() {
                   <table className="min-w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Incoming PO</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Daily Sales</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Days Left</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Reorder Qty</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase">SKU</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase">Type</th>
+                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Stock</th>
+                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Incoming PO</th>
+                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Daily Sales</th>
+                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Days Left</th>
+                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Reorder Qty</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -421,7 +421,7 @@ export default function Home() {
                         <tr key={key} className={rec.suggestedQty > 0 ? 'bg-red-50' : ''}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">{rec.style}</div>
-                            <div className="text-sm text-gray-500">{rec.color} / {rec.size}</div>
+                            <div className="text-sm text-gray-700">{rec.color} / {rec.size}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
@@ -494,7 +494,7 @@ export default function Home() {
         {activeView === 'vendors' && (
           <div className="space-y-4">
             {vendorSummaries.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-700">
                 No vendor data available. Make sure to tag Core items and set vendors in Settings.
               </div>
             ) : (
@@ -619,11 +619,11 @@ export default function Home() {
                   <div key={vendor.vendor} className="flex justify-between items-center py-2 border-b">
                     <div>
                       <span className="font-medium">{vendor.vendor}</span>
-                      <span className="text-gray-500 text-sm ml-2">({vendor.styles.length} styles)</span>
+                      <span className="text-gray-700 text-sm ml-2">({vendor.styles.length} styles)</span>
                     </div>
                     <div className="text-right">
                       <span className="font-bold">${vendor.totalCost.toLocaleString()}</span>
-                      <span className="text-gray-500 text-sm ml-2">{vendor.totalQty} units</span>
+                      <span className="text-gray-700 text-sm ml-2">{vendor.totalQty} units</span>
                     </div>
                   </div>
                 ))}
