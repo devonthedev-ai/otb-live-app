@@ -12,96 +12,88 @@ export function parseInventoryCSV(csvText: string): ParsedInventory {
   const products: Product[] = [];
   const inventory: InventoryItem[] = [];
   
-  const result = Papa.parse(csvText, {
-    header: true,
+  // Parse without headers
+  const rawResult = Papa.parse(csvText, {
+    header: false,
     skipEmptyLines: true
   });
   
-  let currentStyle = '';
-  let currentColor = '';
+  if (rawResult.data.length < 3) {
+    return { products, inventory };
+  }
   
-  for (const row of result.data as Record<string, string>[]) {
-    const style = row['Style']?.trim();
-    const colorHeader = row['Color']?.trim();
+  // Find column indices from header row
+  const headerRow = rawResult.data[0] as string[];
+  const styleIdx = headerRow.findIndex(h => h?.trim() === 'Style');
+  const colorIdx = headerRow.findIndex(h => h?.trim() === 'Color');
+  const avgIdx = headerRow.findIndex(h => h?.trim() === 'Avg');
+  
+  // Size columns are positions 3 through avgIdx-1 (between "Other" and "Avg")
+  const sizeStartIdx = 3;
+  
+  let currentStyle = '';
+  let currentSizeNames: string[] = [];
+  
+  for (let rowIdx = 1; rowIdx < rawResult.data.length; rowIdx++) {
+    const row = rawResult.data[rowIdx] as string[];
     
-    // Skip total rows
-    if (style === 'Total') continue;
+    const style = row[styleIdx]?.trim().replace(/^"|"$/g, '');
+    const color = row[colorIdx]?.trim().replace(/^"|"$/g, '');
     
-    // New style row - captures product name
-    if (style && !colorHeader) {
+    if (!style || style === 'Total') continue;
+    
+    // Detect size header row: has XS, S, M in columns 3,4,5
+    const col3 = row[sizeStartIdx]?.trim();
+    const col4 = row[sizeStartIdx + 1]?.trim();
+    const col5 = row[sizeStartIdx + 2]?.trim();
+    
+    const isSizeHeader = col3 === 'XS' && col4 === 'S' && col5 === 'M';
+    
+    if (isSizeHeader) {
       currentStyle = style;
+      currentSizeNames = [];
+      for (let c = sizeStartIdx; c < avgIdx && c < row.length; c++) {
+        const val = row[c]?.trim().replace(/^"|"$/g, '');
+        if (val) currentSizeNames.push(val);
+      }
       continue;
     }
     
-    // Style with color
-    if (style && colorHeader) {
-      currentStyle = style;
-      currentColor = colorHeader;
-    } else if (colorHeader && !style) {
-      // Just color change
-      currentColor = colorHeader;
-    }
+    // Data row - must have a color and match current style
+    if (!color || color === '' || currentStyle !== style) continue;
     
-    // Parse size columns (28, 29, 30, 31, 32, etc. or XS, S, M, L, XL, XXL)
-    const sizeColumns = Object.keys(row).filter(k => 
-      k && !['Style', 'Color', 'Other', 'Avg', 'Units', 'Value'].includes(k) && row[k]?.trim()
-    );
+    const costStr = avgIdx >= 0 ? row[avgIdx] : '0';
+    const cost = parseFloat(costStr?.replace(/[$,"]/g, '') || '0');
     
-    for (const sizeCol of sizeColumns) {
-      const qty = parseInt(row[sizeCol]) || 0;
-      const cost = parseFloat(row['Avg']?.replace('$', '').replace(',', '') || '0');
+    // Parse quantities for each size
+    for (let s = 0; s < currentSizeNames.length; s++) {
+      const colIdx = sizeStartIdx + s;
+      if (colIdx >= row.length) break;
       
-      // Determine if Core (you'll need to set this manually or via lookup)
-      // For now, we'll default to Core for testing
-      const season = 'Core'; // TODO: Read from separate source
+      const sizeName = currentSizeNames[s];
+      const qtyStr = row[colIdx]?.trim().replace(/^"|"$/g, '');
       
-      const product: Product = {
+      if (!qtyStr) continue;
+      const qty = parseInt(qtyStr);
+      if (isNaN(qty)) continue;
+      
+      products.push({
         style: currentStyle,
-        color: currentColor,
-        size: sizeCol,
-        season,
-        leadTimeDays: 90, // Default 90 days
-        cost
-      };
-      
-      const invItem: InventoryItem = {
-        style: currentStyle,
-        color: currentColor,
-        size: sizeCol,
-        onHand: qty,
-        incomingQty: 0, // Will be populated from PO data
-        reservedQty: 0
-      };
-      
-      products.push(product);
-      inventory.push(invItem);
-    }
-    
-    // Handle OS (One Size) items
-    if (row['OS'] !== undefined) {
-      const qty = parseInt(row['OS']) || 0;
-      const cost = parseFloat(row['Avg']?.replace('$', '').replace(',', '') || '0');
-      
-      const product: Product = {
-        style: currentStyle,
-        color: currentColor,
-        size: 'OS',
+        color: color,
+        size: sizeName,
         season: 'Core',
         leadTimeDays: 90,
         cost
-      };
+      });
       
-      const invItem: InventoryItem = {
+      inventory.push({
         style: currentStyle,
-        color: currentColor,
-        size: 'OS',
+        color: color,
+        size: sizeName,
         onHand: qty,
         incomingQty: 0,
         reservedQty: 0
-      };
-      
-      products.push(product);
-      inventory.push(invItem);
+      });
     }
   }
   
@@ -120,26 +112,20 @@ export function parseSalesCSV(csvText: string): SaleRecord[] {
     const rawStyle = row['Style']?.trim();
     if (!rawStyle || rawStyle === 'Total') continue;
     
-    // Extract base style and color from Style field
-    // Style format can be: "SW0173" or "SW0173-BLK" or "AC0001-BLK"
     let style = rawStyle;
     let color = row['Color']?.trim() || '';
     
-    // If style contains a dash, it might have color embedded
-    // Check if the part after dash matches the Color column
     if (rawStyle.includes('-')) {
       const parts = rawStyle.split('-');
       const potentialStyle = parts[0];
       const potentialColor = parts[1];
       
-      // If the color column matches or is empty, use the base style
       if (!color || color === potentialColor) {
         style = potentialStyle;
         color = potentialColor;
       }
     }
     
-    // Skip rows without size (these are rollups/totals)
     const size = row['Size']?.trim() || '';
     if (!size) continue;
     
