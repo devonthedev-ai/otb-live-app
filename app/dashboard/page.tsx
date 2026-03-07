@@ -11,6 +11,7 @@ import { enhanceWithSmartProjections } from '@/app/utils/smartProjections';
 import { useLocalStorage } from '@/app/hooks/useLocalStorage';
 import { useAuth } from '@/app/context/AuthContext';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
+import { Sidebar } from '@/app/components/Sidebar';
 
 interface Overrides {
   season: Record<string, string>;
@@ -280,9 +281,11 @@ export default function Dashboard() {
   }, [recommendations, products]);
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] font-sans">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200 sticky top-0 z-50">
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <div className="flex-1 min-h-screen bg-[#F5F5F7] font-sans overflow-auto">
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
@@ -781,6 +784,7 @@ export default function Dashboard() {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }
