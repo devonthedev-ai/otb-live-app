@@ -283,10 +283,10 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-h-screen overflow-auto">
-        {/* Modern Header */}
+      <div className="flex-1">
+        {/* Header */}
         <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-8 py-4">
+          <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Inventory Dashboard</h1>
@@ -295,10 +295,7 @@ export default function Dashboard() {
               
               <div className="flex items-center gap-4">
                 {lastSaved && (
-                  <span className="flex items-center gap-1.5 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
+                  <span className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
                     Saved {lastSaved}
                   </span>
                 )}
@@ -308,7 +305,7 @@ export default function Dashboard() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-8 py-8">
+        <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Upload Section */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Import Data</h2>
@@ -339,64 +336,22 @@ export default function Dashboard() {
         {recommendations.length > 0 && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Total SKUs</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{recommendations.length}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                    </svg>
-                  </div>
-                </div>
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <p className="text-sm font-medium text-gray-500">Total SKUs</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{recommendations.length}</p>
               </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Core Items</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{coreItems.length}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <p className="text-sm font-medium text-gray-500">Core Items</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{coreItems.length}</p>
               </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Need Reorder</p>
-                    <p className="text-3xl font-bold text-red-600 mt-2">{criticalCount}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                </div>
-                {criticalCount > 0 && (
-                  <p className="text-sm text-red-600 mt-2 font-medium">Action required</p>
-                )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 border-l-4 border-l-red-500">
+                <p className="text-sm font-medium text-gray-500">Need Reorder</p>
+                <p className="text-3xl font-bold text-red-600 mt-1">{criticalCount}</p>
               </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Coverage</p>
-                    <p className="text-sm text-gray-700 mt-2">Lead time + 14d</p>
-                  </div>
-                  <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <p className="text-sm font-medium text-gray-500">Coverage</p>
+                <p className="text-sm text-gray-700 mt-2">Lead time + 14d buffer</p>
               </div>
             </div>
 
