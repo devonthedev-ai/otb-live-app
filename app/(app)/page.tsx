@@ -1,6 +1,6 @@
-// app/(app)/page.tsx - Redirect to dashboard
-import { redirect } from 'next/navigation';
+// app/(app)/page.tsx - Dashboard home
+import Dashboard from './dashboard/page';
 
-export default function AppPage() {
-  redirect('/dashboard');
+export default function HomePage() {
+  return <Dashboard />;
 }

@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { Product, InventoryItem, SaleRecord, ReorderRecommendation, SizeCurveItem } from '../types';
-import { parseInventoryCSV, parseSalesCSV } from '../utils/csvParser';
-import { calculateRecommendations } from '../utils/calculations';
-import { groupByVendor, calculateInventoryHealth } from '../utils/advancedCalculations';
-import { generateStyleColorSizeCurve } from '../utils/sizeCurves';
-import { generatePODraft, downloadPO } from '../utils/poExport';
-import { enhanceWithSmartProjections } from '../utils/smartProjections';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import { useAuth } from '../context/AuthContext';
-import { useWorkspace } from '../context/WorkspaceContext';
+import { Product, InventoryItem, SaleRecord, ReorderRecommendation, SizeCurveItem } from '../../types';
+import { parseInventoryCSV, parseSalesCSV } from '../../utils/csvParser';
+import { calculateRecommendations } from '../../utils/calculations';
+import { groupByVendor, calculateInventoryHealth } from '../../utils/advancedCalculations';
+import { generateStyleColorSizeCurve } from '../../utils/sizeCurves';
+import { generatePODraft, downloadPO } from '../../utils/poExport';
+import { enhanceWithSmartProjections } from '../../utils/smartProjections';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useAuth } from '../../context/AuthContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 
 interface Overrides {
   season: Record<string, string>;
