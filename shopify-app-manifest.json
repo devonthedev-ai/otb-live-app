@@ -1,0 +1,75 @@
+{
+  "name": "OTB Live - Inventory Planning",
+  "short_name": "OTB Live",
+  "description": "AI-powered inventory planning for apparel brands. Predict stockouts, optimize reorders, and never miss a sale.",
+  "short_description": "Smart inventory planning for apparel",
+  "handle": "otb-live",
+  "developer_name": "OTB Live",
+  "developer_email": "support@otblive.com",
+  "developer_url": "https://otblive.com",
+  "icon": "https://otblive.com/icon.png",
+  "cover_image": "https://otblive.com/cover.png",
+  "screenshot_urls": [
+    "https://otblive.com/screenshot-1.png",
+    "https://otblive.com/screenshot-2.png"
+  ],
+  "video_url": "",
+  "pricing_plans": [
+    {
+      "name": "Starter",
+      "price": "29.00",
+      "currency": "USD",
+      "interval": "month"
+    },
+    {
+      "name": "Growth", 
+      "price": "99.00",
+      "currency": "USD",
+      "interval": "month"
+    }
+  ],
+  "features": [
+    "Stockout prediction with AI",
+    "Multi-channel forecasting",
+    "Size curve optimization",
+    "Purchase order generation",
+    "Vendor management",
+    "Real-time Shopify sync"
+  ],
+  "categories": [
+    "Inventory management",
+    "Purchasing",
+    "Analytics"
+  ],
+  "app_store_url": "https://apps.shopify.com/otb-live",
+  "privacy_policy_url": "https://otblive.com/privacy",
+  "terms_of_service_url": "https://otblive.com/terms",
+  "support_url": "https://otblive.com/support",
+  "faq_url": "https://otblive.com/faq",
+  "installation_instructions": "Install the app and connect your Shopify store. Your products and orders will sync automatically.",
+  "requirements": "Shopify Basic plan or higher",
+  "permissions": [
+    "read_products",
+    "read_inventory", 
+    "read_orders",
+    "read_customers"
+  ],
+  "webhooks": {
+    "orders/create": "https://otblive.com/api/shopify/webhooks",
+    "orders/updated": "https://otblive.com/api/shopify/webhooks",
+    "inventory_levels/update": "https://otblive.com/api/shopify/webhooks",
+    "products/create": "https://otblive.com/api/shopify/webhooks",
+    "products/update": "https://otblive.com/api/shopify/webhooks"
+  },
+  "oauth": {
+    "redirect_uris": [
+      "https://otblive.com/api/shopify/callback"
+    ],
+    "scopes": [
+      "read_products",
+      "read_inventory",
+      "read_orders", 
+      "read_customers"
+    ]
+  }
+}

@@ -9,12 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.96.0",
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.8.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.97.0",
     "@types/papaparse": "^5.5.2",
     "next": "14.2.35",
     "papaparse": "^5.5.3",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "server-only": "^0.0.1",
+    "ssh2-sftp-client": "^12.0.1",
+    "stripe": "^20.4.0"
   },
   "devDependencies": {
     "@types/node": "^20",
