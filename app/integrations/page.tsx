@@ -1,4 +1,4 @@
-// app/(app)/integrations/page.tsx
+// app/integrations/page.tsx
 'use client';
 
 import { useState } from 'react';

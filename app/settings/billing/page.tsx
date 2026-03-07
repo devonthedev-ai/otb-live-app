@@ -1,4 +1,4 @@
-// app/(app)/settings/billing/page.tsx
+// app/settings/billing/page.tsx
 'use client';
 
 import { useState } from 'react';
