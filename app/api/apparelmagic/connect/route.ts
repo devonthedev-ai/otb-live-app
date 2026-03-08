@@ -57,8 +57,9 @@ export async function POST(request: NextRequest) {
     });
     
     if (saveError) {
+      console.error('Failed to save ApparelMagic credentials:', saveError);
       return NextResponse.json(
-        { error: 'Failed to save credentials' },
+        { error: `Failed to save credentials: ${saveError.message}` },
         { status: 500 }
       );
     }
