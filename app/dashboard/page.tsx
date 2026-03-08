@@ -287,22 +287,25 @@ export default function Dashboard() {
   }, [recommendations, products]);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-[#F5F5F7]">
       <Sidebar />
       <div className="flex-1">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-6 py-4">
+        {/* Apple-style Header */}
+        <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50">
+          <div className="max-w-5xl mx-auto px-8 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Inventory Dashboard</h1>
-                <p className="text-sm text-gray-500">Manage your stock and reorders</p>
+                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Inventory</h1>
+                <p className="text-sm text-gray-500 mt-0.5">Plan and manage your stock</p>
               </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 {lastSaved && (
-                  <span className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
-                    Saved {lastSaved}
+                  <span className="flex items-center gap-1.5 text-sm text-green-600 bg-green-50/80 backdrop-blur-sm px-3 py-1.5 rounded-full border border-green-100">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    {lastSaved}
                   </span>
                 )}
               </div>
@@ -311,28 +314,28 @@ export default function Dashboard() {
         </header>
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Upload Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <main className="max-w-5xl mx-auto px-8 py-8">
+        {/* Upload Section - Apple Style */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Import Data</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Inventory CSV</label>
+              <label className="block text-sm font-medium text-gray-600 mb-2">Inventory CSV</label>
               <input
                 type="file"
                 accept=".csv"
                 onChange={handleInventoryUpload}
-                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:bg-gray-100 file:text-gray-700 file:font-medium hover:file:bg-gray-200 transition-colors"
+                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:bg-gray-100 file:text-gray-700 file:font-medium hover:file:bg-gray-200 transition-all"
               />
               {inventoryFileName && <p className="text-xs text-green-600 mt-2 font-medium">✓ {inventoryFileName}</p>}
             </div>
             <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sales CSV</label>
+              <label className="block text-sm font-medium text-gray-600 mb-2">Sales CSV</label>
               <input
                 type="file"
                 accept=".csv"
                 onChange={handleSalesUpload}
-                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:bg-gray-100 file:text-gray-700 file:font-medium hover:file:bg-gray-200 transition-colors"
+                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:bg-gray-100 file:text-gray-700 file:font-medium hover:file:bg-gray-200 transition-all"
               />
               {salesFileName && <p className="text-xs text-green-600 mt-2 font-medium">✓ {salesFileName}</p>}
             </div>
@@ -341,55 +344,55 @@ export default function Dashboard() {
 
         {recommendations.length > 0 && (
           <>
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
+            {/* Stats - Apple Style */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5 hover:shadow-md transition-shadow duration-200">
+                <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Total SKUs</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{recommendations.length}</p>
+                    <p className="text-3xl font-semibold text-gray-900 mt-1">{recommendations.length}</p>
                   </div>
-                  <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-                    <CubeIcon className="h-6 w-6 text-blue-600" />
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
+                    <CubeIcon className="h-5 w-5 text-blue-600" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5 hover:shadow-md transition-shadow duration-200">
+                <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Core Items</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{coreItems.length}</p>
+                    <p className="text-3xl font-semibold text-gray-900 mt-1">{coreItems.length}</p>
                   </div>
-                  <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center">
-                    <CheckCircleIcon className="h-6 w-6 text-indigo-600" />
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                    <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5 hover:shadow-md transition-shadow duration-200">
+                <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Need Reorder</p>
-                    <p className="text-3xl font-bold text-red-600 mt-2">{criticalCount}</p>
+                    <p className="text-3xl font-semibold text-red-600 mt-1">{criticalCount}</p>
                   </div>
-                  <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
                   </div>
                 </div>
                 {criticalCount > 0 && (
-                  <p className="text-sm text-red-600 mt-2 font-medium">Action required</p>
+                  <p className="text-xs text-red-600 mt-2 font-medium">Action required</p>
                 )}
               </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5 hover:shadow-md transition-shadow duration-200">
+                <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Coverage</p>
-                    <p className="text-sm text-gray-700 mt-2">Lead time + 14d</p>
+                    <p className="text-sm text-gray-600 mt-2">Lead time + 14d</p>
                   </div>
-                  <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
-                    <ShieldCheckIcon className="h-6 w-6 text-green-600" />
+                  <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+                    <ShieldCheckIcon className="h-5 w-5 text-green-600" />
                   </div>
                 </div>
               </div>
