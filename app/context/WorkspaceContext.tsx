@@ -51,6 +51,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const fetchWorkspaces = async () => {
     setIsLoading(true);
     
+    console.log('Fetching workspaces for user:', user!.id);
+    
     const { data, error } = await supabase
       .from('workspace_members')
       .select(`
@@ -59,6 +61,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       .eq('user_id', user!.id)
       .eq('status', 'active');
 
+    console.log('Workspace query result:', { data, error, count: data?.length });
+
     if (error) {
       console.error('Error fetching workspaces:', error);
       setIsLoading(false);
@@ -66,6 +70,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
 
     const workspaceList = (data as unknown as { workspaces: Workspace }[]).map(d => d.workspaces);
+    console.log('Parsed workspaces:', workspaceList);
     setWorkspaces(workspaceList);
 
     // Restore selected workspace or use first
