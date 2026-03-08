@@ -73,12 +73,17 @@ export default function IntegrationsPage() {
     setIsConnectingAM(true);
     
     try {
+      // Extract just the subdomain (remove .app.apparelmagic.com if present)
+      let cleanSubdomain = amSubdomain.trim().toLowerCase();
+      cleanSubdomain = cleanSubdomain.replace(/\.app\.apparelmagic\.com$/, '');
+      cleanSubdomain = cleanSubdomain.replace(/^https?:\/\//, '');
+      
       const response = await fetch('/api/apparelmagic/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workspaceId: currentWorkspace.id,
-          subdomain: amSubdomain,
+          subdomain: cleanSubdomain,
           token: amToken,
         }),
       });
