@@ -1,20 +1,50 @@
 // app/integrations/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
+import { createClient } from '@/app/lib/supabase/client';
 
 export default function IntegrationsPage() {
   const { currentWorkspace } = useWorkspace();
+  const supabase = createClient();
   
   const [shopDomain, setShopDomain] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnectingShopify, setIsConnectingShopify] = useState(false);
+  
+  // ApparelMagic state
+  const [amSubdomain, setAmSubdomain] = useState('');
+  const [amToken, setAmToken] = useState('');
+  const [isConnectingAM, setIsConnectingAM] = useState(false);
+  const [amConnected, setAmConnected] = useState(false);
+  const [amSyncing, setAmSyncing] = useState(false);
+  const [amLastSync, setAmLastSync] = useState<string | null>(null);
 
-  const handleConnect = async (e: React.FormEvent) => {
+  // Check ApparelMagic connection status
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    
+    const checkConnection = async () => {
+      const { data } = await supabase
+        .from('apparelmagic_connections')
+        .select('last_sync_at')
+        .eq('workspace_id', currentWorkspace.id)
+        .single();
+      
+      if (data) {
+        setAmConnected(true);
+        setAmLastSync(data.last_sync_at);
+      }
+    };
+    
+    checkConnection();
+  }, [currentWorkspace, supabase]);
+
+  const handleConnectShopify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopDomain) return;
 
-    setIsConnecting(true);
+    setIsConnectingShopify(true);
     
     let domain = shopDomain.toLowerCase().trim();
     if (!domain.includes('.')) {
@@ -24,11 +54,81 @@ export default function IntegrationsPage() {
     window.location.href = `/api/shopify/install?shop=${encodeURIComponent(domain)}`;
   };
 
+  const handleConnectApparelMagic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amSubdomain || !amToken || !currentWorkspace) return;
+
+    setIsConnectingAM(true);
+    
+    try {
+      const response = await fetch('/api/apparelmagic/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          subdomain: amSubdomain,
+          token: amToken,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAmConnected(true);
+        alert('Connected to ApparelMagic!');
+      } else {
+        alert(data.error || 'Failed to connect');
+      }
+    } catch (error) {
+      alert('Connection failed. Please try again.');
+    } finally {
+      setIsConnectingAM(false);
+    }
+  };
+
+  const handleSyncApparelMagic = async () => {
+    if (!currentWorkspace) return;
+    
+    setAmSyncing(true);
+    
+    try {
+      const response = await fetch('/api/apparelmagic/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAmLastSync(new Date().toISOString());
+        alert(`Synced ${data.productsSynced} products!`);
+      } else {
+        alert(data.error || 'Sync failed');
+      }
+    } catch (error) {
+      alert('Sync failed. Please try again.');
+    } finally {
+      setAmSyncing(false);
+    }
+  };
+
+  if (!currentWorkspace) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Integrations</h1>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      {/* Shopify */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
             <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 24 24">
@@ -42,7 +142,7 @@ export default function IntegrationsPage() {
               Sync orders and inventory automatically from your Shopify store.
             </p>
 
-            <form onSubmit={handleConnect} className="mt-4">
+            <form onSubmit={handleConnectShopify} className="mt-4">
               <div className="flex gap-3">
                 <input
                   type="text"
@@ -53,10 +153,10 @@ export default function IntegrationsPage() {
                 />
                 <button
                   type="submit"
-                  disabled={isConnecting || !shopDomain}
+                  disabled={isConnectingShopify || !shopDomain}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isConnecting ? 'Connecting...' : 'Connect'}
+                  {isConnectingShopify ? 'Connecting...' : 'Connect'}
                 </button>
               </div>
             </form>
@@ -64,18 +164,8 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      <div className="mt-6 bg-gray-50 rounded-xl p-4">
-        <h4 className="font-medium text-gray-900 mb-2">What gets synced:</h4>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>✓ Products and variants</li>
-          <li>✓ Inventory levels</li>
-          <li>✓ Orders (real-time)</li>
-          <li>✓ Sales velocity calculations</li>
-        </ul>
-      </div>
-
-      {/* ApparelMagic - Coming Soon */}
-      <div className="mt-6 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 opacity-50">
+      {/* ApparelMagic */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
             <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -86,13 +176,77 @@ export default function IntegrationsPage() {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-gray-900">ApparelMagic</h3>
-              <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">Coming Soon</span>
+              {amConnected && (
+                <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">Connected</span>
+              )}
             </div>
             <p className="text-gray-500 text-sm mt-1">
-              Connect via SFTP to automatically import inventory and sales data.
+              Import products and inventory from ApparelMagic ERP.
             </p>
+
+            {!amConnected ? (
+              <form onSubmit={handleConnectApparelMagic} className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subdomain</label>
+                  <input
+                    type="text"
+                    value={amSubdomain}
+                    onChange={(e) => setAmSubdomain(e.target.value)}
+                    placeholder="yourcompany"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">yourcompany.app.apparelmagic.com</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">API Token</label>
+                  <input
+                    type="password"
+                    value={amToken}
+                    onChange={(e) => setAmToken(e.target.value)}
+                    placeholder="Paste your API token"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">From Settings &gt; API &gt; Tokens</p>
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isConnectingAM || !amSubdomain || !amToken}
+                  className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isConnectingAM ? 'Connecting...' : 'Connect ApparelMagic'}
+                </button>
+              </form>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <button
+                  onClick={handleSyncApparelMagic}
+                  disabled={amSyncing}
+                  className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {amSyncing ? 'Syncing...' : 'Sync Products Now'}
+                </button>
+                
+                {amLastSync && (
+                  <p className="text-sm text-gray-500 text-center">
+                    Last synced: {new Date(amLastSync).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 bg-gray-50 rounded-xl p-4">
+        <h4 className="font-medium text-gray-900 mb-2">What gets synced:</h4>
+        <ul className="text-sm text-gray-600 space-y-1">
+          <li>✓ Products and variants</li>
+          <li>✓ Inventory levels</li>
+          <li>✓ Orders (real-time with Shopify)</li>
+          <li>✓ Sales velocity calculations</li>
+        </ul>
       </div>
     </div>
   );
