@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       external_id: p.id,
       name: p.name,
       sku: p.sku,
-      style: p.style_number || p.name,
+      style: p.style_number || p.name || 'Unknown',
       color: p.color || 'Unknown',
       size: p.size || 'Unknown',
       cost: p.cost || 0,

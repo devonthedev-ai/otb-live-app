@@ -4,13 +4,11 @@
 import { useState, useEffect } from 'react';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { createClient } from '@/app/lib/supabase/client';
+import { Sidebar } from '@/app/components/Sidebar';
 
 export default function IntegrationsPage() {
   const { currentWorkspace, isLoading: isWorkspaceLoading, workspaces } = useWorkspace();
   const supabase = createClient();
-  
-  // Debug
-  console.log('Integrations debug:', { isWorkspaceLoading, currentWorkspace, workspacesCount: workspaces.length });
   
   const [shopDomain, setShopDomain] = useState('');
   const [isConnectingShopify, setIsConnectingShopify] = useState(false);
@@ -134,10 +132,13 @@ export default function IntegrationsPage() {
 
   if (isWorkspaceLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-600">Loading workspace...</p>
+      <div className="flex min-h-screen bg-[#F5F5F7]">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-600">Loading workspace...</p>
+          </div>
         </div>
       </div>
     );
@@ -145,17 +146,34 @@ export default function IntegrationsPage() {
 
   if (!currentWorkspace) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
-          <p className="font-medium">No workspace found</p>
-          <p className="text-sm mt-1">Please create a workspace first.</p>
+      <div className="flex min-h-screen bg-[#F5F5F7]">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+            <p className="font-medium">No workspace found</p>
+            <p className="text-sm mt-1">Please create a workspace first.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="flex min-h-screen bg-[#F5F5F7]">
+      <Sidebar />
+      <div className="flex-1">
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50">
+          <div className="max-w-5xl mx-auto px-8 py-4">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Integrations</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Connect your systems</p>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="max-w-5xl mx-auto px-8 py-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Integrations</h1>
 
       {/* Shopify */}
@@ -279,6 +297,8 @@ export default function IntegrationsPage() {
           <li>✓ Sales velocity calculations</li>
         </ul>
       </div>
+      </main>
     </div>
+  </div>
   );
 }
