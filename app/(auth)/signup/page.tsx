@@ -32,7 +32,27 @@ export default function SignupPage() {
       return;
     }
 
-    // 2. Create workspace
+    // 2. Sign in immediately (to get session)
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (signInError) {
+      setError('Account created! Please sign in with your credentials.');
+      setIsLoading(false);
+      router.push('/login');
+      return;
+    }
+
+    // 3. Get current user (now we have a session)
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      setError('Account created! Please sign in with your credentials.');
+      setIsLoading(false);
+      router.push('/login');
+      return;
+    }
+
+    // 4. Create workspace
     const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     
     const { data: workspace, error: workspaceError } = await supabase
@@ -47,16 +67,7 @@ export default function SignupPage() {
       return;
     }
 
-    // 3. Get current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      setError('Account created but session not found. Please sign in.');
-      setIsLoading(false);
-      return;
-    }
-
-    // 4. Add user as workspace owner
+    // 5. Add user as workspace owner
     const { error: memberError } = await supabase
       .from('workspace_members')
       .insert({
@@ -72,7 +83,7 @@ export default function SignupPage() {
       return;
     }
 
-    router.push('/');
+    router.push('/dashboard');
     router.refresh();
   };
 
