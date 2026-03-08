@@ -25,15 +25,24 @@ export default function IntegrationsPage() {
     if (!currentWorkspace) return;
     
     const checkConnection = async () => {
-      const { data } = await supabase
-        .from('apparelmagic_connections')
-        .select('last_sync_at')
-        .eq('workspace_id', currentWorkspace.id)
-        .single();
-      
-      if (data) {
-        setAmConnected(true);
-        setAmLastSync(data.last_sync_at);
+      try {
+        const { data, error } = await supabase
+          .from('apparelmagic_connections')
+          .select('last_sync_at')
+          .eq('workspace_id', currentWorkspace.id)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Error checking connection:', error);
+          return;
+        }
+        
+        if (data) {
+          setAmConnected(true);
+          setAmLastSync(data.last_sync_at);
+        }
+      } catch (err) {
+        console.error('Connection check failed:', err);
       }
     };
     
@@ -118,7 +127,10 @@ export default function IntegrationsPage() {
   if (!currentWorkspace) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <p>Loading...</p>
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-600">Loading workspace...</p>
+        </div>
       </div>
     );
   }
