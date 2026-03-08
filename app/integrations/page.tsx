@@ -6,8 +6,11 @@ import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { createClient } from '@/app/lib/supabase/client';
 
 export default function IntegrationsPage() {
-  const { currentWorkspace, isLoading: isWorkspaceLoading } = useWorkspace();
+  const { currentWorkspace, isLoading: isWorkspaceLoading, workspaces } = useWorkspace();
   const supabase = createClient();
+  
+  // Debug
+  console.log('Integrations debug:', { isWorkspaceLoading, currentWorkspace, workspacesCount: workspaces.length });
   
   const [shopDomain, setShopDomain] = useState('');
   const [isConnectingShopify, setIsConnectingShopify] = useState(false);
