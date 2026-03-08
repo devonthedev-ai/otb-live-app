@@ -12,6 +12,12 @@ import { useLocalStorage } from '@/app/hooks/useLocalStorage';
 import { useAuth } from '@/app/context/AuthContext';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { Sidebar } from '@/app/components/Sidebar';
+import { 
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ShieldCheckIcon,
+  CubeIcon
+} from '@heroicons/react/24/outline';
 
 interface Overrides {
   season: Record<string, string>;
@@ -336,22 +342,56 @@ export default function Dashboard() {
         {recommendations.length > 0 && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-                <p className="text-sm font-medium text-gray-500">Total SKUs</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{recommendations.length}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Total SKUs</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{recommendations.length}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <CubeIcon className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
               </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-                <p className="text-sm font-medium text-gray-500">Core Items</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{coreItems.length}</p>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Core Items</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{coreItems.length}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center">
+                    <CheckCircleIcon className="h-6 w-6 text-indigo-600" />
+                  </div>
+                </div>
               </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 border-l-4 border-l-red-500">
-                <p className="text-sm font-medium text-gray-500">Need Reorder</p>
-                <p className="text-3xl font-bold text-red-600 mt-1">{criticalCount}</p>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Need Reorder</p>
+                    <p className="text-3xl font-bold text-red-600 mt-2">{criticalCount}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
+                    <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
+                {criticalCount > 0 && (
+                  <p className="text-sm text-red-600 mt-2 font-medium">Action required</p>
+                )}
               </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-                <p className="text-sm font-medium text-gray-500">Coverage</p>
-                <p className="text-sm text-gray-700 mt-2">Lead time + 14d buffer</p>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Coverage</p>
+                    <p className="text-sm text-gray-700 mt-2">Lead time + 14d</p>
+                  </div>
+                  <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
+                    <ShieldCheckIcon className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
               </div>
             </div>
 
