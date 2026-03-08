@@ -1,6 +1,7 @@
 // app/layout.tsx
 import { AuthProvider } from '@/app/context/AuthContext';
 import { WorkspaceProvider } from '@/app/context/WorkspaceContext';
+import './globals.css';
 
 export default function RootLayout({
   children,
