@@ -353,7 +353,7 @@ export default function Dashboard() {
                     <p className="text-3xl font-semibold text-gray-900 mt-1">{recommendations.length}</p>
                   </div>
                   <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <CubeIcon className="h-5 w-5 text-blue-600" />
+                    <CubeIcon className="h-5 w-5 text-blue-600 flex-shrink-0" style={{ width: '20px', height: '20px' }} />
                   </div>
                 </div>
               </div>
@@ -365,7 +365,7 @@ export default function Dashboard() {
                     <p className="text-3xl font-semibold text-gray-900 mt-1">{coreItems.length}</p>
                   </div>
                   <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-                    <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
+                    <CheckCircleIcon className="h-5 w-5 text-indigo-600 flex-shrink-0" style={{ width: '20px', height: '20px' }} />
                   </div>
                 </div>
               </div>
@@ -377,7 +377,7 @@ export default function Dashboard() {
                     <p className="text-3xl font-semibold text-red-600 mt-1">{criticalCount}</p>
                   </div>
                   <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-600 flex-shrink-0" style={{ width: '20px', height: '20px' }} />
                   </div>
                 </div>
                 {criticalCount > 0 && (
@@ -392,7 +392,7 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-600 mt-2">Lead time + 14d</p>
                   </div>
                   <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
-                    <ShieldCheckIcon className="h-5 w-5 text-green-600" />
+                    <ShieldCheckIcon className="h-5 w-5 text-green-600 flex-shrink-0" style={{ width: '20px', height: '20px' }} />
                   </div>
                 </div>
               </div>

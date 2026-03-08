@@ -50,7 +50,7 @@ export function Sidebar() {
                     : 'text-gray-500 hover:bg-white/60 hover:text-gray-900'
                 }`}
               >
-                <Icon className={`h-5 w-5 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
+                <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} style={{ width: '20px', height: '20px' }} />
                 {item.name}
               </Link>
             );
