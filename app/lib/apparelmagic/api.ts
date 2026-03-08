@@ -256,6 +256,8 @@ type ApparelMagicOrdersResponse = ApparelMagicResponse<ApparelMagicOrder>;
 type ApparelMagicVendorsResponse = ApparelMagicResponse<ApparelMagicVendor>;
 
 // Database functions
+import { createServiceClient } from '@/app/lib/supabase/service';
+
 export async function getApparelMagicCredentials(workspaceId: string): Promise<ApparelMagicCredentials | null> {
   const supabase = createClient();
   
@@ -263,7 +265,7 @@ export async function getApparelMagicCredentials(workspaceId: string): Promise<A
     .from('apparelmagic_connections')
     .select('subdomain, token')
     .eq('workspace_id', workspaceId)
-    .single();
+    .maybeSingle();
   
   if (error || !data) return null;
   
@@ -277,7 +279,8 @@ export async function saveApparelMagicCredentials(
   workspaceId: string,
   credentials: ApparelMagicCredentials
 ): Promise<{ error: Error | null }> {
-  const supabase = createClient();
+  // Use service role to bypass RLS (we already checked permissions in API route)
+  const supabase = createServiceClient();
   
   const { error } = await supabase
     .from('apparelmagic_connections')
