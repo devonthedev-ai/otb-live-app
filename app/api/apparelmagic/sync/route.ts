@@ -58,7 +58,18 @@ export async function POST(request: NextRequest) {
     const client = new ApparelMagicClient(credentials);
     
     // Fetch products
-    const products = await client.getAllProducts();
+    console.log('Fetching products from ApparelMagic...');
+    let products;
+    try {
+      products = await client.getAllProducts();
+      console.log(`Fetched ${products.length} products`);
+    } catch (fetchError) {
+      console.error('Error fetching products:', fetchError);
+      return NextResponse.json(
+        { error: `Failed to fetch products: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}` },
+        { status: 500 }
+      );
+    }
     
     // Transform to our format
     const transformedProducts = products.map((p) => ({
@@ -79,6 +90,7 @@ export async function POST(request: NextRequest) {
     }));
     
     // Upsert products using service client
+    console.log('Upserting products to database...');
     const { error: productsError } = await serviceSupabase
       .from('products')
       .upsert(transformedProducts, {
@@ -89,10 +101,12 @@ export async function POST(request: NextRequest) {
     if (productsError) {
       console.error('Products sync error:', productsError);
       return NextResponse.json(
-        { error: 'Failed to sync products' },
+        { error: `Failed to sync products: ${productsError.message}` },
         { status: 500 }
       );
     }
+    
+    console.log(`Successfully synced ${transformedProducts.length} products`);
     
     // Update last sync time
     await serviceSupabase
