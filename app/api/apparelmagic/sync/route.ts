@@ -1,7 +1,8 @@
 // app/api/apparelmagic/sync/route.ts
 import { createClient } from '@/app/lib/supabase/server';
+import { createServiceClient } from '@/app/lib/supabase/service';
 import { NextRequest, NextResponse } from 'next/server';
-import { ApparelMagicClient, getApparelMagicCredentials } from '@/app/lib/apparelmagic/api';
+import { ApparelMagicClient } from '@/app/lib/apparelmagic/api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,9 +39,16 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get credentials
-    const credentials = await getApparelMagicCredentials(workspaceId);
-    if (!credentials) {
+    // Get credentials using service client
+    const serviceSupabase = createServiceClient();
+    const { data: credentials, error: credsError } = await serviceSupabase
+      .from('apparelmagic_connections')
+      .select('subdomain, token')
+      .eq('workspace_id', workspaceId)
+      .single();
+    
+    if (credsError || !credentials) {
+      console.error('Credentials error:', credsError);
       return NextResponse.json(
         { error: 'ApparelMagic not connected' },
         { status: 400 }
@@ -70,8 +78,8 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
     
-    // Upsert products
-    const { error: productsError } = await supabase
+    // Upsert products using service client
+    const { error: productsError } = await serviceSupabase
       .from('products')
       .upsert(transformedProducts, {
         onConflict: 'workspace_id,sku',
@@ -87,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Update last sync time
-    await supabase
+    await serviceSupabase
       .from('apparelmagic_connections')
       .update({ last_sync_at: new Date().toISOString() })
       .eq('workspace_id', workspaceId);
