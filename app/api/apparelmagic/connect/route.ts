@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
     const isConnected = await client.testConnection();
     
     if (!isConnected) {
+      console.error('ApparelMagic connection failed:', { subdomain, tokenLength: token?.length });
       return NextResponse.json(
         { error: 'Could not connect to ApparelMagic. Please check your subdomain and token.' },
         { status: 400 }

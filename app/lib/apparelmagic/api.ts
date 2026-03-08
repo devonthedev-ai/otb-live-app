@@ -68,13 +68,19 @@ export class ApparelMagicClient {
       requestBody = JSON.stringify(requestData);
     }
 
+    console.log('ApparelMagic API request:', { url: url.replace(this.token, '***TOKEN***'), method });
+
     const response = await fetch(url, {
       method,
       headers,
       body: requestBody,
     });
 
+    console.log('ApparelMagic API response:', { status: response.status, statusText: response.statusText });
+
     if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error details');
+      console.error('ApparelMagic API error:', errorText);
       throw new Error(`ApparelMagic API error: ${response.status} ${response.statusText}`);
     }
 
@@ -84,9 +90,12 @@ export class ApparelMagicClient {
   // Test connection
   async testConnection(): Promise<boolean> {
     try {
+      console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain, url: this.baseUrl });
       await this.request('products', 'GET', undefined, { pageSize: 1 });
+      console.log('ApparelMagic connection successful');
       return true;
-    } catch {
+    } catch (error) {
+      console.error('ApparelMagic connection failed:', error);
       return false;
     }
   }
