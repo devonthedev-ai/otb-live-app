@@ -6,7 +6,7 @@ import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { createClient } from '@/app/lib/supabase/client';
 
 export default function IntegrationsPage() {
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, isLoading: isWorkspaceLoading } = useWorkspace();
   const supabase = createClient();
   
   const [shopDomain, setShopDomain] = useState('');
@@ -124,12 +124,23 @@ export default function IntegrationsPage() {
     }
   };
 
-  if (!currentWorkspace) {
+  if (isWorkspaceLoading) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-gray-600">Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentWorkspace) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+          <p className="font-medium">No workspace found</p>
+          <p className="text-sm mt-1">Please create a workspace first.</p>
         </div>
       </div>
     );
