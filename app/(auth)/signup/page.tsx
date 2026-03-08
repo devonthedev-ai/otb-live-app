@@ -23,27 +23,34 @@ export default function SignupPage() {
     setError('');
     setIsLoading(true);
 
+    console.log('Signup step 1: Creating user...');
     // 1. Sign up user
     const { error: signUpError } = await signUp(email, password, name);
 
     if (signUpError) {
+      console.log('Signup error:', signUpError);
       setError(signUpError.message);
       setIsLoading(false);
       return;
     }
 
+    console.log('Signup step 2: Signing in...');
     // 2. Sign in immediately (to get session)
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     
     if (signInError) {
+      console.log('Sign in error:', signInError);
       setError('Account created! Please sign in with your credentials.');
       setIsLoading(false);
       router.push('/login');
       return;
     }
 
+    console.log('Signup step 3: Getting user...');
     // 3. Get current user (now we have a session)
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    console.log('User result:', { user: user?.id, error: userError });
     
     if (!user) {
       setError('Account created! Please sign in with your credentials.');
@@ -52,6 +59,7 @@ export default function SignupPage() {
       return;
     }
 
+    console.log('Signup step 4: Creating workspace...');
     // 4. Create workspace
     const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     
@@ -61,12 +69,16 @@ export default function SignupPage() {
       .select()
       .single();
 
+    console.log('Workspace result:', { workspace: workspace?.id, error: workspaceError });
+
     if (workspaceError) {
+      console.log('Workspace error:', workspaceError);
       setError('Account created but workspace setup failed. Please contact support.');
       setIsLoading(false);
       return;
     }
 
+    console.log('Signup step 5: Creating membership...');
     // 5. Add user as workspace owner
     const { error: memberError } = await supabase
       .from('workspace_members')
@@ -77,12 +89,16 @@ export default function SignupPage() {
         status: 'active',
       });
 
+    console.log('Membership result:', { error: memberError });
+
     if (memberError) {
+      console.log('Membership error:', memberError);
       setError('Account and workspace created but membership failed. Please contact support.');
       setIsLoading(false);
       return;
     }
 
+    console.log('Signup complete! Redirecting...');
     router.push('/dashboard');
     router.refresh();
   };
