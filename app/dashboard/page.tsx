@@ -446,6 +446,49 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Raw Products View (when loaded from DB but no recommendations yet) */}
+            {products.length > 0 && recommendations.length === 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Products from ApparelMagic ({products.length})
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Upload inventory and sales CSV files to calculate reorder recommendations.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50/50">
+                      <tr>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">SKU</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Style</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Color</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Size</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Category</th>
+                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {products.slice(0, 20).map((p, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50">
+                          <td className="py-3 px-4 text-gray-900">{p.sku}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.style}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.color}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.size}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.category}</td>
+                          <td className="py-3 px-4 text-right text-gray-900">${p.cost?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {products.length > 20 && (
+                    <p className="text-sm text-gray-500 mt-4 text-center">
+                      Showing 20 of {products.length} products
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Controls */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
               <div className="flex items-center gap-2">
@@ -541,6 +584,49 @@ export default function Dashboard() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* Show products from database when no recommendations yet */}
+            {products.length > 0 && recommendations.length === 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Products from ApparelMagic ({products.length})
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Upload inventory and sales CSV files to calculate reorder recommendations.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50/50">
+                      <tr>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">SKU</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Style</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Color</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Size</th>
+                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Cost</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Category</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.slice(0, 20).map((p) => (
+                        <tr key={p.sku} className="border-t border-gray-100">
+                          <td className="py-3 px-4 font-medium text-gray-900">{p.sku}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.style}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.color}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.size}</td>
+                          <td className="py-3 px-4 text-right text-gray-600">${p.cost?.toFixed(2)}</td>
+                          <td className="py-3 px-4 text-gray-600">{p.category}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {products.length > 20 && (
+                    <p className="text-sm text-gray-500 text-center py-3">
+                      ... and {products.length - 20} more products
+                    </p>
+                  )}
                 </div>
               </div>
             )}

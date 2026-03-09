@@ -3,6 +3,7 @@
 // === Core Data Models ===
 
 export interface Product {
+  sku: string;
   style: string;
   color: string;
   size: string;

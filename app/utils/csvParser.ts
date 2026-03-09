@@ -78,6 +78,7 @@ export function parseInventoryCSV(csvText: string): ParsedInventory {
       if (isNaN(qty)) continue;
       
       products.push({
+        sku: `${currentStyle}-${color}-${sizeName}`,
         style: currentStyle,
         color: color,
         size: sizeName,
