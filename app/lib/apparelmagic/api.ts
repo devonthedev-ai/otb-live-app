@@ -122,6 +122,7 @@ export class ApparelMagicClient {
   async getAllProducts(): Promise<ApparelMagicProduct[]> {
     const allProducts: ApparelMagicProduct[] = [];
     let lastId: string | undefined;
+    let pageCount = 0;
     
     while (true) {
       const { products, lastId: newLastId } = await this.getProducts({
@@ -129,12 +130,16 @@ export class ApparelMagicClient {
         lastId,
       });
       
+      pageCount++;
+      console.log(`ApparelMagic page ${pageCount}: ${products.length} products`);
+      
       allProducts.push(...products);
       
       if (!newLastId) break;
       lastId = newLastId;
     }
     
+    console.log(`ApparelMagic total products: ${allProducts.length}`);
     return allProducts;
   }
 

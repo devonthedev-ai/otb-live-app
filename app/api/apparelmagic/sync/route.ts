@@ -72,11 +72,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Transform to our format
+    console.log('Raw products from ApparelMagic:', products.slice(0, 3)); // Log first 3
+    
     const transformedProducts = products.map((p) => ({
       workspace_id: workspaceId,
-      external_id: p.id,
-      name: p.name,
-      sku: p.sku,
+      external_id: String(p.id || ''),
+      name: p.name || 'Unknown',
+      sku: p.sku || String(p.id || ''),
       style: p.style_number || p.name || 'Unknown',
       color: p.color || 'Unknown',
       size: p.size || 'Unknown',
@@ -88,6 +90,8 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
+    
+    console.log('Transformed products:', transformedProducts.slice(0, 3)); // Log first 3
     
     // Upsert products using service client
     console.log('Upserting products to database...');
