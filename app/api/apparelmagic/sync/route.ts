@@ -91,13 +91,18 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
     
-    console.log('Transformed products:', transformedProducts.slice(0, 3)); // Log first 3
+    // Deduplicate by SKU (keep first occurrence)
+    const uniqueProducts = Array.from(
+      new Map(transformedProducts.map(p => [p.sku, p])).values()
+    );
+    
+    console.log(`Transformed ${transformedProducts.length} products, ${uniqueProducts.length} unique`);
     
     // Upsert products using service client
     console.log('Upserting products to database...');
     const { error: productsError } = await serviceSupabase
       .from('products')
-      .upsert(transformedProducts, {
+      .upsert(uniqueProducts, {
         onConflict: 'workspace_id,sku',
         ignoreDuplicates: false,
       });
@@ -110,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log(`Successfully synced ${transformedProducts.length} products`);
+    console.log(`Successfully synced ${uniqueProducts.length} products`);
     
     // Update last sync time
     await serviceSupabase
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      productsSynced: transformedProducts.length,
+      productsSynced: uniqueProducts.length,
     });
     
   } catch (error) {
