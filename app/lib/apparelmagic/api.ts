@@ -46,12 +46,8 @@ export class ApparelMagicClient {
 
     if (method === 'GET') {
       const params = new URLSearchParams(authParams);
-      if (pagination?.pageSize) {
-        params.append('page_size', String(pagination.pageSize));
-      }
-      if (pagination?.lastId) {
-        params.append('last_id', pagination.lastId);
-      }
+      // Note: ApparelMagic doesn't support page_size in GET query params
+      // Default is 100 records per page
       url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
     } else {
       url = `${this.baseUrl}/${endpoint}`;
@@ -106,7 +102,7 @@ export class ApparelMagicClient {
     lastId: string | null;
   }> {
     const response = await this.request<ApparelMagicProductsResponse>(
-      'products',
+      'Products',
       'GET',
       undefined,
       pagination
@@ -127,10 +123,10 @@ export class ApparelMagicClient {
     let pageCount = 0;
     
     while (true) {
-      const { products, lastId: newLastId } = await this.getProducts({
-        pageSize: 1000,
-        lastId,
-      });
+      // Don't pass pageSize for GET requests - use default 100
+      const { products, lastId: newLastId } = await this.getProducts(
+        lastId ? { lastId } : undefined
+      );
       
       pageCount++;
       console.log(`ApparelMagic page ${pageCount}: ${products.length} products`);
