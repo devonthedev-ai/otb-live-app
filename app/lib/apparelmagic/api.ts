@@ -87,7 +87,7 @@ export class ApparelMagicClient {
   async testConnection(): Promise<boolean> {
     try {
       console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain, url: this.baseUrl });
-      const result = await this.request('Products', 'GET', undefined, { pageSize: 1 });
+      const result = await this.request('products', 'GET', undefined, { pageSize: 1 });
       console.log('ApparelMagic connection test result:', JSON.stringify(result).slice(0, 200));
       return true;
     } catch (error) {
@@ -102,7 +102,7 @@ export class ApparelMagicClient {
     lastId: string | null;
   }> {
     const response = await this.request<ApparelMagicProductsResponse>(
-      'Products',
+      'products',
       'GET',
       undefined,
       pagination
