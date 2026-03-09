@@ -48,6 +48,10 @@ export class ApparelMagicClient {
       const params = new URLSearchParams(authParams);
       // Note: ApparelMagic doesn't support page_size in GET query params
       // Default is 100 records per page
+      // But we DO need to pass last_id for pagination
+      if (pagination?.lastId) {
+        params.append('last_id', pagination.lastId);
+      }
       url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
     } else {
       url = `${this.baseUrl}/${endpoint}`;
