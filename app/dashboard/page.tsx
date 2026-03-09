@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Product, InventoryItem, SaleRecord, ReorderRecommendation, SizeCurveItem } from '@/app/types';
 import { parseInventoryCSV, parseSalesCSV } from '@/app/utils/csvParser';
 import { calculateRecommendations } from '@/app/utils/calculations';
@@ -12,6 +12,7 @@ import { useLocalStorage } from '@/app/hooks/useLocalStorage';
 import { useAuth } from '@/app/context/AuthContext';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { Sidebar } from '@/app/components/Sidebar';
+import { createClient } from '@/app/lib/supabase/client';
 import { 
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -53,6 +54,45 @@ export default function Dashboard() {
     totalQty: number;
     curve: SizeCurveItem[];
   }>({ open: false, style: '', color: '', totalQty: 0, curve: [] });
+
+  const supabase = createClient();
+
+  // Load products from database on mount
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    
+    const loadProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error loading products:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        console.log('Loaded products from database:', data.length);
+        // Convert DB format to app format
+        const appProducts: Product[] = data.map(p => ({
+          sku: p.sku || p.style,
+          style: p.style,
+          color: p.color,
+          size: p.size,
+          category: p.category || '',
+          cost: p.cost || 0,
+          season: p.season || 'Core',
+          leadTimeDays: p.lead_time_days || 90,
+          vendor: p.vendor || '',
+        }));
+        setProducts(appProducts);
+      }
+    };
+    
+    loadProducts();
+  }, [currentWorkspace, supabase]);
 
   const handleInventoryUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
