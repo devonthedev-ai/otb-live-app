@@ -91,8 +91,8 @@ export class ApparelMagicClient {
   async testConnection(): Promise<boolean> {
     try {
       console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain, url: this.baseUrl });
-      await this.request('products', 'GET', undefined, { pageSize: 1 });
-      console.log('ApparelMagic connection successful');
+      const result = await this.request('Products', 'GET', undefined, { pageSize: 1 });
+      console.log('ApparelMagic connection test result:', JSON.stringify(result).slice(0, 200));
       return true;
     } catch (error) {
       console.error('ApparelMagic connection failed:', error);
@@ -111,6 +111,8 @@ export class ApparelMagicClient {
       undefined,
       pagination
     );
+    
+    console.log('ApparelMagic API response:', JSON.stringify(response).slice(0, 500));
     
     return {
       products: response.response || [],
