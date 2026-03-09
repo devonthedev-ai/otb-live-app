@@ -76,8 +76,6 @@ export class ApparelMagicClient {
       body: requestBody,
     });
 
-    console.log('ApparelMagic API response:', { status: response.status, statusText: response.statusText });
-
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'No error details');
       console.error('ApparelMagic API error:', errorText);
@@ -112,8 +110,6 @@ export class ApparelMagicClient {
       pagination
     );
     
-    console.log('ApparelMagic API response:', JSON.stringify(response).slice(0, 500));
-    
     return {
       products: response.response || [],
       lastId: response.meta?.pagination?.last_id || null,
@@ -124,7 +120,6 @@ export class ApparelMagicClient {
   async getAllProducts(): Promise<ApparelMagicProduct[]> {
     const allProducts: ApparelMagicProduct[] = [];
     let lastId: string | undefined;
-    let pageCount = 0;
     
     while (true) {
       // Don't pass pageSize for GET requests - use default 100
@@ -132,16 +127,12 @@ export class ApparelMagicClient {
         lastId ? { lastId } : undefined
       );
       
-      pageCount++;
-      console.log(`ApparelMagic page ${pageCount}: ${products.length} products`);
-      
       allProducts.push(...products);
       
       if (!newLastId) break;
       lastId = newLastId;
     }
     
-    console.log(`ApparelMagic total products: ${allProducts.length}`);
     return allProducts;
   }
 
