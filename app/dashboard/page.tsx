@@ -59,9 +59,13 @@ export default function Dashboard() {
 
   // Load products from database on mount
   useEffect(() => {
-    if (!currentWorkspace) return;
+    if (!currentWorkspace) {
+      console.log('No current workspace, skipping product load');
+      return;
+    }
     
     const loadProducts = async () => {
+      console.log('Loading products for workspace:', currentWorkspace.id);
       const { data, error } = await supabase
         .from('products')
         .select('*')
@@ -73,8 +77,9 @@ export default function Dashboard() {
         return;
       }
       
+      console.log('Products query result:', { count: data?.length, data });
+      
       if (data && data.length > 0) {
-        console.log('Loaded products from database:', data.length);
         // Convert DB format to app format
         const appProducts: Product[] = data.map(p => ({
           sku: p.sku || p.style,
@@ -87,7 +92,10 @@ export default function Dashboard() {
           leadTimeDays: p.lead_time_days || 90,
           vendor: p.vendor || '',
         }));
+        console.log('Setting products:', appProducts);
         setProducts(appProducts);
+      } else {
+        console.log('No products found in database');
       }
     };
     
