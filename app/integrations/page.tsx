@@ -19,6 +19,7 @@ export default function IntegrationsPage() {
   const [isConnectingAM, setIsConnectingAM] = useState(false);
   const [amConnected, setAmConnected] = useState(false);
   const [amSyncing, setAmSyncing] = useState(false);
+  const [amSyncProgress, setAmSyncProgress] = useState(0);
   const [amLastSync, setAmLastSync] = useState<string | null>(null);
 
   // Check ApparelMagic connection status
@@ -105,6 +106,15 @@ export default function IntegrationsPage() {
     if (!currentWorkspace) return;
     
     setAmSyncing(true);
+    setAmSyncProgress(0);
+    
+    // Animate progress bar
+    const progressInterval = setInterval(() => {
+      setAmSyncProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 15;
+      });
+    }, 500);
     
     try {
       const response = await fetch('/api/apparelmagic/sync', {
@@ -115,18 +125,28 @@ export default function IntegrationsPage() {
         }),
       });
       
+      clearInterval(progressInterval);
+      
       const data = await response.json();
       
       if (response.ok) {
+        setAmSyncProgress(100);
         setAmLastSync(new Date().toISOString());
-        alert(`Synced ${data.productsSynced} products!`);
+        setTimeout(() => {
+          setAmSyncing(false);
+          setAmSyncProgress(0);
+          alert(`Synced ${data.productsSynced} products!`);
+        }, 500);
       } else {
+        setAmSyncing(false);
+        setAmSyncProgress(0);
         alert(data.error || 'Sync failed');
       }
     } catch (error) {
-      alert('Sync failed. Please try again.');
-    } finally {
+      clearInterval(progressInterval);
       setAmSyncing(false);
+      setAmSyncProgress(0);
+      alert('Sync failed. Please try again.');
     }
   };
 
@@ -269,13 +289,26 @@ export default function IntegrationsPage() {
               </form>
             ) : (
               <div className="mt-4 space-y-3">
-                <button
-                  onClick={handleSyncApparelMagic}
-                  disabled={amSyncing}
-                  className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {amSyncing ? 'Syncing...' : 'Sync Products Now'}
-                </button>
+                {amSyncing ? (
+                  <div className="space-y-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div 
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                        style={{ width: `${amSyncProgress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-sm text-gray-600 text-center">
+                      Syncing products... {amSyncProgress}%
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSyncApparelMagic}
+                    className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                  >
+                    Sync Products Now
+                  </button>
+                )}
                 
                 {amLastSync && (
                   <p className="text-sm text-gray-500 text-center">
