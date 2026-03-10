@@ -5,6 +5,8 @@ import { createClient } from '@/app/lib/supabase/client';
 import { useAuth } from '@/app/context/AuthContext';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { Sidebar } from '@/app/components/Sidebar';
+import TrendsView from '@/app/components/TrendsView';
+import BulkEditView from '@/app/components/BulkEditView';
 
 // Types
 interface InventoryItem {
@@ -42,12 +44,17 @@ interface SizeCurveData {
     size: string;
     sales90Days: number;
     sales365Days: number;
+    effectiveSales90: number;
+    demandSource: 'recent' | 'extended' | 'constrained';
     currentStock: number;
     velocity: number;
     percentOfTotal: number;
     suggestedQty: number;
+    isStockedOut: boolean;
+    daysSinceLastSale: number | null;
   }[];
   totalSales: number;
+  totalEffectiveSales: number;
   totalStock: number;
 }
 
@@ -87,7 +94,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   
   // View states
-  const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator'>('otb');
+  const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator' | 'trends' | 'bulk-edit'>('otb');
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
@@ -126,7 +133,7 @@ export default function Dashboard() {
   const sizeCurves = useMemo<SizeCurveData[]>(() => {
     const curves = new Map<string, SizeCurveData>();
     
-    // Group sales by style-color
+    // Group sales by style-color (use 365 days for better accuracy)
     const salesByStyleColor = new Map<string, SalesItem[]>();
     for (const sale of sales) {
       const key = `${sale.style}-${sale.color}`;
@@ -145,32 +152,75 @@ export default function Dashboard() {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
+    const oneYearAgo = new Date();
+    oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+    
     for (const [key, items] of Array.from(invByStyleColor)) {
       const [style, color] = key.split('-');
       const styleColorSales = salesByStyleColor.get(key) || [];
       
       const sizeData = items.map(item => {
+        // Get sales for this specific size
         const sizeSales = styleColorSales.filter(s => s.size === item.size);
-        const sales90 = sizeSales.filter(s => new Date(s.sale_date) >= ninetyDaysAgo).reduce((sum, s) => sum + s.units, 0);
-        const sales365 = sizeSales.reduce((sum, s) => sum + s.units, 0);
+        
+        // 90-day sales (recent)
+        const sales90 = sizeSales
+          .filter(s => new Date(s.sale_date) >= ninetyDaysAgo)
+          .reduce((sum, s) => sum + s.units, 0);
+        
+        // 365-day sales (extended)
+        const sales365 = sizeSales
+          .filter(s => new Date(s.sale_date) >= oneYearAgo)
+          .reduce((sum, s) => sum + s.units, 0);
+        
+        // Detect stockout situation
+        // If current stock is 0 but had sales before, it stocked out
+        const lastSale = sizeSales[0]; // Already sorted by date desc
+        const lastSaleDate = lastSale ? new Date(lastSale.sale_date) : null;
+        const daysSinceLastSale = lastSaleDate 
+          ? Math.floor((Date.now() - lastSaleDate.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        
+        // Size stocked out if: zero inventory + had sales + last sale was a while ago
+        const isStockedOut = item.qty_available <= 0 && sales365 > 0 && daysSinceLastSale !== null && daysSinceLastSale > 14;
+        
+        // Calculate true demand
+        // If stocked out with strong historical sales, use 365-day average
+        // Otherwise use 90-day recent velocity
+        let effectiveSales90 = sales90;
+        let demandSource: 'recent' | 'extended' | 'constrained' = 'recent';
+        
+        if (isStockedOut && sales365 > sales90 * 2) {
+          // Size stocked out early in the 90-day window
+          // Estimate what sales would have been if not stocked out
+          effectiveSales90 = Math.round(sales365 / 4); // Approximate 90-day from 365-day
+          demandSource = 'extended';
+        } else if (isStockedOut) {
+          demandSource = 'constrained';
+        }
         
         return {
           size: item.size,
           sales90Days: sales90,
           sales365Days: sales365,
+          effectiveSales90,
+          demandSource,
           currentStock: item.qty_available,
-          velocity: sales90 / 90,
+          velocity: effectiveSales90 / 90,
           percentOfTotal: 0, // Calculated below
-          suggestedQty: 0 // Calculated below
+          suggestedQty: 0, // Calculated below
+          isStockedOut,
+          daysSinceLastSale
         };
       });
       
-      const totalSales = sizeData.reduce((sum, s) => sum + s.sales90Days, 0);
+      // Calculate total using effective sales (not just raw 90-day)
+      const totalEffectiveSales = sizeData.reduce((sum, s) => sum + s.effectiveSales90, 0);
       const totalStock = sizeData.reduce((sum, s) => sum + s.currentStock, 0);
       
-      // Calculate percentages
+      // Calculate percentages based on effective demand
       sizeData.forEach(s => {
-        s.percentOfTotal = totalSales > 0 ? (s.sales90Days / totalSales) * 100 : 0;
+        s.percentOfTotal = totalEffectiveSales > 0 ? (s.effectiveSales90 / totalEffectiveSales) * 100 : 0;
       });
       
       // Sort by size (common size order)
@@ -188,12 +238,14 @@ export default function Dashboard() {
         style,
         color,
         sizes: sizeData,
-        totalSales,
+        totalSales: sizeData.reduce((sum, s) => sum + s.sales90Days, 0),
+        totalEffectiveSales,
         totalStock
       });
     }
     
-    return Array.from(curves.values()).sort((a, b) => b.totalSales - a.totalSales);
+    return Array.from(curves.values())
+      .sort((a, b) => b.totalEffectiveSales - a.totalEffectiveSales);
   }, [inventory, sales]);
 
   // === CATEGORY DATA ===
@@ -341,6 +393,8 @@ export default function Dashboard() {
                   { id: 'size-curves', label: 'Size Curves' },
                   { id: 'categories', label: 'Categories' },
                   { id: 'po-generator', label: 'PO Generator' },
+                  { id: 'trends', label: 'Trends' },
+                  { id: 'bulk-edit', label: 'Bulk Edit' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -388,27 +442,48 @@ export default function Dashboard() {
                   <div className="space-y-3">
                     {curve.sizes.map(size => (
                       <div key={size.size} className="flex items-center gap-4">
-                        <div className="w-12 text-sm font-medium text-gray-700">{size.size}</div>
+                        <div className="w-14 text-sm font-medium text-gray-700">
+                          {size.size}
+                          {size.demandSource === 'extended' && (
+                            <span className="ml-1 text-amber-500" title="Stocked out - using extended history">⚠️</span>
+                          )}
+                          {size.demandSource === 'constrained' && (
+                            <span className="ml-1 text-red-500" title="Stocked out - demand constrained">🚫</span>
+                          )}
+                        </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
                               <div 
-                                className={`h-full rounded-full ${size.percentOfTotal > 20 ? 'bg-blue-500' : size.percentOfTotal > 10 ? 'bg-blue-400' : 'bg-blue-300'}`}
+                                className={`h-full rounded-full ${
+                                  size.demandSource === 'extended' ? 'bg-amber-500' :
+                                  size.demandSource === 'constrained' ? 'bg-red-400' :
+                                  size.percentOfTotal > 20 ? 'bg-blue-500' : 
+                                  size.percentOfTotal > 10 ? 'bg-blue-400' : 'bg-blue-300'
+                                }`}
                                 style={{ width: `${Math.min(size.percentOfTotal * 2, 100)}%` }}
                               />
                             </div>
-                            <span className="text-sm text-gray-600 w-16">{size.percentOfTotal.toFixed(1)}%</span>
+                            <span className="text-sm text-gray-600 w-16">
+                              {size.percentOfTotal.toFixed(1)}%
+                            </span>
                           </div>
                         </div>
                         <div className="text-right w-24">
                           <span className="text-sm font-medium">{size.sales90Days}</span>
-                          <span className="text-xs text-gray-400 ml-1">sold</span>
+                          {size.sales365Days > size.sales90Days * 2 && (
+                            <span className="text-xs text-amber-600 block">
+                              365d: {size.sales365Days}
+                            </span>
+                          )}
                         </div>
                         <div className="text-right w-20">
                           <span className={`text-sm ${size.currentStock < 10 ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
                             {size.currentStock}
                           </span>
-                          <span className="text-xs text-gray-400 ml-1">stock</span>
+                          {size.isStockedOut && (
+                            <span className="text-xs text-red-500 block">OUT</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -416,8 +491,9 @@ export default function Dashboard() {
                   
                   {/* Insight */}
                   {(() => {
-                    const topSize = curve.sizes.reduce((max, s) => s.sales90Days > max.sales90Days ? s : max, curve.sizes[0]);
-                    const lowStock = curve.sizes.filter(s => s.currentStock < 10 && s.sales90Days > 5);
+                    const topSize = curve.sizes.reduce((max, s) => s.effectiveSales90 > max.effectiveSales90 ? s : max, curve.sizes[0]);
+                    const lowStock = curve.sizes.filter(s => s.currentStock < 10 && s.effectiveSales90 > 5);
+                    const stockedOut = curve.sizes.filter(s => s.isStockedOut && s.demandSource === 'extended');
                     return (
                       <div className="mt-4 pt-4 border-t border-gray-100 text-sm">
                         <span className="text-gray-600">Top size: </span>
@@ -425,6 +501,11 @@ export default function Dashboard() {
                         {lowStock.length > 0 && (
                           <span className="ml-4 text-red-600">
                             ⚠️ Low stock: {lowStock.map(s => s.size).join(', ')}
+                          </span>
+                        )}
+                        {stockedOut.length > 0 && (
+                          <span className="ml-4 text-amber-600">
+                            ⚠️ Est. demand: {stockedOut.map(s => s.size).join(', ')}
                           </span>
                         )}
                       </div>
@@ -534,6 +615,11 @@ export default function Dashboard() {
               ))}
             </div>
           )}
+          {/* TRENDS TAB */}
+          {activeTab === 'trends' && <TrendsView />}
+
+          {/* BULK EDIT TAB */}
+          {activeTab === 'bulk-edit' && <BulkEditView />}
         </main>
       </div>
     </div>
