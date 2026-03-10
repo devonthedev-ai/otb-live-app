@@ -154,6 +154,70 @@ export class ApparelMagicClient {
     };
   }
 
+  // Get all inventory (handles pagination)
+  async getAllInventory(): Promise<ApparelMagicInventory[]> {
+    const allInventory: ApparelMagicInventory[] = [];
+    let lastId: string | undefined;
+    
+    while (true) {
+      const { inventory, lastId: newLastId } = await this.getInventory(
+        lastId ? { lastId } : undefined
+      );
+      
+      allInventory.push(...inventory);
+      
+      if (!newLastId) break;
+      lastId = newLastId;
+    }
+    
+    return allInventory;
+  }
+
+  // Get invoices (sales) with date filter
+  async getInvoices(startDate?: string, pagination?: PaginationParams): Promise<{
+    invoices: ApparelMagicInvoice[];
+    lastId: string | null;
+  }> {
+    const params: Record<string, string> = {};
+    if (startDate) {
+      params['parameters[0][field]'] = 'date';
+      params['parameters[0][operator]'] = '>=';
+      params['parameters[0][value]'] = startDate;
+    }
+    
+    const response = await this.request<ApparelMagicInvoicesResponse>(
+      'invoices',
+      'GET',
+      Object.keys(params).length > 0 ? params : undefined,
+      pagination
+    );
+    
+    return {
+      invoices: response.response || [],
+      lastId: response.meta?.pagination?.last_id || null,
+    };
+  }
+
+  // Get all invoices (handles pagination)
+  async getAllInvoices(startDate?: string): Promise<ApparelMagicInvoice[]> {
+    const allInvoices: ApparelMagicInvoice[] = [];
+    let lastId: string | undefined;
+    
+    while (true) {
+      const { invoices, lastId: newLastId } = await this.getInvoices(
+        startDate,
+        lastId ? { lastId } : undefined
+      );
+      
+      allInvoices.push(...invoices);
+      
+      if (!newLastId) break;
+      lastId = newLastId;
+    }
+    
+    return allInvoices;
+  }
+
   // Get orders/sales
   async getOrders(pagination?: PaginationParams): Promise<{
     orders: ApparelMagicOrder[];
@@ -217,13 +281,43 @@ interface ApparelMagicProduct {
 }
 
 interface ApparelMagicInventory {
-  id: string;
+  sku_id: string;
   product_id: string;
-  sku: string;
-  quantity_on_hand: number;
-  quantity_available: number;
-  quantity_reserved: number;
-  warehouse_id?: string;
+  style_number: string;
+  attr_2?: string;
+  attr_3?: string;
+  size?: string;
+  sku_concat?: string;
+  qty_inventory: string;
+  qty_avail_sell: string;
+  qty_alloc: string;
+  qty_picked: string;
+  qty_open_po: string;
+  upc_display?: string;
+  upc_11?: string;
+  price?: string;
+  cost?: string;
+  weight?: string;
+  [key: string]: unknown;
+}
+
+interface ApparelMagicInvoiceItem {
+  id: string;
+  sku_id: string;
+  style_number: string;
+  attr_2?: string;
+  attr_3?: string;
+  size?: string;
+  qty: string;
+  unit_price: string;
+  amount: string;
+}
+
+interface ApparelMagicInvoice {
+  invoice_id: string;
+  customer_id: string;
+  date: string;
+  invoice_items?: ApparelMagicInvoiceItem[];
   [key: string]: unknown;
 }
 
@@ -252,6 +346,7 @@ type ApparelMagicProductsResponse = ApparelMagicResponse<ApparelMagicProduct>;
 type ApparelMagicInventoryResponse = ApparelMagicResponse<ApparelMagicInventory>;
 type ApparelMagicOrdersResponse = ApparelMagicResponse<ApparelMagicOrder>;
 type ApparelMagicVendorsResponse = ApparelMagicResponse<ApparelMagicVendor>;
+type ApparelMagicInvoicesResponse = ApparelMagicResponse<ApparelMagicInvoice>;
 
 // Database functions
 import { createServiceClient } from '@/app/lib/supabase/service';

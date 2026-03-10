@@ -18,9 +18,17 @@ export default function IntegrationsPage() {
   const [amToken, setAmToken] = useState('');
   const [isConnectingAM, setIsConnectingAM] = useState(false);
   const [amConnected, setAmConnected] = useState(false);
-  const [amSyncing, setAmSyncing] = useState(false);
-  const [amSyncProgress, setAmSyncProgress] = useState(0);
-  const [amLastSync, setAmLastSync] = useState<string | null>(null);
+  
+  // Sync states
+  const [syncingProducts, setSyncingProducts] = useState(false);
+  const [syncingInventory, setSyncingInventory] = useState(false);
+  const [syncingSales, setSyncingSales] = useState(false);
+  
+  const [syncStatus, setSyncStatus] = useState<{
+    lastProductSync: string | null;
+    lastInventorySync: string | null;
+    lastSalesSync: string | null;
+  }>({ lastProductSync: null, lastInventorySync: null, lastSalesSync: null });
 
   // Check ApparelMagic connection status
   useEffect(() => {
@@ -30,7 +38,7 @@ export default function IntegrationsPage() {
       try {
         const { data, error } = await supabase
           .from('apparelmagic_connections')
-          .select('last_sync_at')
+          .select('last_sync_at, last_inventory_sync, last_sales_sync')
           .eq('workspace_id', currentWorkspace.id)
           .maybeSingle();
         
@@ -41,7 +49,11 @@ export default function IntegrationsPage() {
         
         if (data) {
           setAmConnected(true);
-          setAmLastSync(data.last_sync_at);
+          setSyncStatus({
+            lastProductSync: data.last_sync_at,
+            lastInventorySync: data.last_inventory_sync,
+            lastSalesSync: data.last_sales_sync,
+          });
         }
       } catch (err) {
         console.error('Connection check failed:', err);
@@ -102,51 +114,81 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleSyncApparelMagic = async () => {
+  const handleSyncProducts = async () => {
     if (!currentWorkspace) return;
-    
-    setAmSyncing(true);
-    setAmSyncProgress(0);
-    
-    // Animate progress bar
-    const progressInterval = setInterval(() => {
-      setAmSyncProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 500);
+    setSyncingProducts(true);
     
     try {
       const response = await fetch('/api/apparelmagic/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: currentWorkspace.id,
-        }),
+        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
       });
-      
-      clearInterval(progressInterval);
       
       const data = await response.json();
       
       if (response.ok) {
-        setAmSyncProgress(100);
-        setAmLastSync(new Date().toISOString());
-        setTimeout(() => {
-          setAmSyncing(false);
-          setAmSyncProgress(0);
-          alert(`Synced ${data.productsSynced} products!`);
-        }, 500);
+        setSyncStatus(prev => ({ ...prev, lastProductSync: new Date().toISOString() }));
+        alert(`Synced ${data.productsSynced} products!`);
       } else {
-        setAmSyncing(false);
-        setAmSyncProgress(0);
-        alert(data.error || 'Sync failed');
+        alert(data.error || 'Product sync failed');
       }
     } catch (error) {
-      clearInterval(progressInterval);
-      setAmSyncing(false);
-      setAmSyncProgress(0);
-      alert('Sync failed. Please try again.');
+      alert('Product sync failed. Please try again.');
+    } finally {
+      setSyncingProducts(false);
+    }
+  };
+
+  const handleSyncInventory = async () => {
+    if (!currentWorkspace) return;
+    setSyncingInventory(true);
+    
+    try {
+      const response = await fetch('/api/apparelmagic/sync-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSyncStatus(prev => ({ ...prev, lastInventorySync: new Date().toISOString() }));
+        alert(`Synced ${data.inventorySynced} inventory records!`);
+      } else {
+        alert(data.error || 'Inventory sync failed');
+      }
+    } catch (error) {
+      alert('Inventory sync failed. Please try again.');
+    } finally {
+      setSyncingInventory(false);
+    }
+  };
+
+  const handleSyncSales = async () => {
+    if (!currentWorkspace) return;
+    setSyncingSales(true);
+    
+    try {
+      const response = await fetch('/api/apparelmagic/sync-sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: currentWorkspace.id, daysBack: 90 }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSyncStatus(prev => ({ ...prev, lastSalesSync: new Date().toISOString() }));
+        alert(`Synced ${data.salesRecordsSynced} sales records from ${data.invoicesSynced} invoices!`);
+      } else {
+        alert(data.error || 'Sales sync failed');
+      }
+    } catch (error) {
+      alert('Sales sync failed. Please try again.');
+    } finally {
+      setSyncingSales(false);
     }
   };
 
@@ -289,32 +331,43 @@ export default function IntegrationsPage() {
               </form>
             ) : (
               <div className="mt-4 space-y-3">
-                {amSyncing ? (
-                  <div className="space-y-2">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div 
-                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                        style={{ width: `${amSyncProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-sm text-gray-600 text-center">
-                      Syncing products... {amSyncProgress}%
-                    </p>
-                  </div>
-                ) : (
+                <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={handleSyncApparelMagic}
-                    className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                    onClick={handleSyncProducts}
+                    disabled={syncingProducts}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 text-sm"
                   >
-                    Sync Products Now
+                    {syncingProducts ? 'Syncing...' : 'Sync Products'}
                   </button>
-                )}
+                  
+                  <button
+                    onClick={handleSyncInventory}
+                    disabled={syncingInventory}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 text-sm"
+                  >
+                    {syncingInventory ? 'Syncing...' : 'Sync Inventory'}
+                  </button>
+                  
+                  <button
+                    onClick={handleSyncSales}
+                    disabled={syncingSales}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 text-sm"
+                  >
+                    {syncingSales ? 'Syncing...' : 'Sync Sales'}
+                  </button>
+                </div>
                 
-                {amLastSync && (
-                  <p className="text-sm text-gray-500 text-center">
-                    Last synced: {new Date(amLastSync).toLocaleString()}
-                  </p>
-                )}
+                <div className="text-xs text-gray-500 space-y-1">
+                  {syncStatus.lastProductSync && (
+                    <p>Products: {new Date(syncStatus.lastProductSync).toLocaleString()}</p>
+                  )}
+                  {syncStatus.lastInventorySync && (
+                    <p>Inventory: {new Date(syncStatus.lastInventorySync).toLocaleString()}</p>
+                  )}
+                  {syncStatus.lastSalesSync && (
+                    <p>Sales: {new Date(syncStatus.lastSalesSync).toLocaleString()}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
