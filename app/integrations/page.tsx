@@ -23,12 +23,14 @@ export default function IntegrationsPage() {
   const [syncingProducts, setSyncingProducts] = useState(false);
   const [syncingInventory, setSyncingInventory] = useState(false);
   const [syncingSales, setSyncingSales] = useState(false);
+  const [syncingVendors, setSyncingVendors] = useState(false);
   
   const [syncStatus, setSyncStatus] = useState<{
     lastProductSync: string | null;
     lastInventorySync: string | null;
     lastSalesSync: string | null;
-  }>({ lastProductSync: null, lastInventorySync: null, lastSalesSync: null });
+    lastVendorSync: string | null;
+  }>({ lastProductSync: null, lastInventorySync: null, lastSalesSync: null, lastVendorSync: null });
 
   // Check ApparelMagic connection status
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function IntegrationsPage() {
       try {
         const { data, error } = await supabase
           .from('apparelmagic_connections')
-          .select('last_sync_at, last_inventory_sync, last_sales_sync')
+          .select('last_sync_at, last_inventory_sync, last_sales_sync, last_vendor_sync')
           .eq('workspace_id', currentWorkspace.id)
           .maybeSingle();
         
@@ -53,6 +55,7 @@ export default function IntegrationsPage() {
             lastProductSync: data.last_sync_at,
             lastInventorySync: data.last_inventory_sync,
             lastSalesSync: data.last_sales_sync,
+            lastVendorSync: data.last_vendor_sync,
           });
         }
       } catch (err) {
@@ -189,6 +192,32 @@ export default function IntegrationsPage() {
       alert('Sales sync failed. Please try again.');
     } finally {
       setSyncingSales(false);
+    }
+  };
+
+  const handleSyncVendors = async () => {
+    if (!currentWorkspace) return;
+    setSyncingVendors(true);
+    
+    try {
+      const response = await fetch('/api/apparelmagic/sync-vendors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSyncStatus(prev => ({ ...prev, lastVendorSync: new Date().toISOString() }));
+        alert(`Synced ${data.vendorsSynced} vendors and updated ${data.productsUpdated} products!`);
+      } else {
+        alert(data.error || 'Vendor sync failed');
+      }
+    } catch (error) {
+      alert('Vendor sync failed. Please try again.');
+    } finally {
+      setSyncingVendors(false);
     }
   };
 
@@ -331,7 +360,7 @@ export default function IntegrationsPage() {
               </form>
             ) : (
               <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <button
                     onClick={handleSyncProducts}
                     disabled={syncingProducts}
@@ -355,6 +384,14 @@ export default function IntegrationsPage() {
                   >
                     {syncingSales ? 'Syncing...' : 'Sync Sales'}
                   </button>
+
+                  <button
+                    onClick={handleSyncVendors}
+                    disabled={syncingVendors}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 text-sm"
+                  >
+                    {syncingVendors ? 'Syncing...' : 'Sync Vendors'}
+                  </button>
                 </div>
                 
                 <div className="text-xs text-gray-500 space-y-1">
@@ -366,6 +403,9 @@ export default function IntegrationsPage() {
                   )}
                   {syncStatus.lastSalesSync && (
                     <p>Sales: {new Date(syncStatus.lastSalesSync).toLocaleString()}</p>
+                  )}
+                  {syncStatus.lastVendorSync && (
+                    <p>Vendors: {new Date(syncStatus.lastVendorSync).toLocaleString()}</p>
                   )}
                 </div>
               </div>

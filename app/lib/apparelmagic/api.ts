@@ -253,6 +253,25 @@ export class ApparelMagicClient {
       lastId: response.meta?.pagination?.last_id || null,
     };
   }
+
+  // Get all vendors (handles pagination)
+  async getAllVendors(): Promise<ApparelMagicVendor[]> {
+    const allVendors: ApparelMagicVendor[] = [];
+    let lastId: string | undefined;
+    
+    while (true) {
+      const { vendors, lastId: newLastId } = await this.getVendors(
+        lastId ? { lastId } : undefined
+      );
+      
+      allVendors.push(...vendors);
+      
+      if (!newLastId) break;
+      lastId = newLastId;
+    }
+    
+    return allVendors;
+  }
 }
 
 // Types
