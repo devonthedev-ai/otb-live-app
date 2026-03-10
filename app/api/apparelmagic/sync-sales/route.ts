@@ -80,12 +80,12 @@ export async function POST(request: NextRequest) {
           style: item.style_number,
           color: item.attr_2 || 'Unknown',
           size: item.size || 'Unknown',
-          qty: parseInt(item.qty) || 0,
+          units: parseInt(item.qty) || 0,
           unit_price: parseFloat(item.unit_price) || 0,
-          amount: parseFloat(item.amount) || 0,
+          net_sales: parseFloat(item.amount) || 0,
           sale_date: invoice.date,
           customer_id: invoice.customer_id,
-          channel: 'wholesale', // Default, could be mapped
+          channel: 'wholesale',
           source: 'apparelmagic',
         });
       }
@@ -101,7 +101,6 @@ export async function POST(request: NextRequest) {
       .from('sales')
       .upsert(uniqueSales, {
         onConflict: 'workspace_id,external_id',
-        ignoreDuplicates: false,
       });
     
     if (salesError) {
