@@ -446,11 +446,11 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Raw Products View (when loaded from DB but no recommendations yet) */}
-            {products.length > 0 && recommendations.length === 0 && (
+            {/* Raw Products View (when loaded from DB) */}
+            {products.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Products from ApparelMagic ({products.length})
+                  Products ({products.length})
                 </h3>
                 <p className="text-sm text-gray-500 mb-4">
                   Upload inventory and sales CSV files to calculate reorder recommendations.
