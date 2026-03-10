@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/app/lib/supabase/client';
 import { useAuth } from '@/app/context/AuthContext';
 import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { Sidebar } from '@/app/components/Sidebar';
 
+// Types
 interface InventoryItem {
   sku: string;
   style: string;
@@ -31,39 +32,47 @@ interface ProductSetting {
   sku: string;
   lead_time_days: number;
   moq: number;
-  moq_amount: number | null;
   vendor_name: string | null;
-  safety_stock_days: number;
-  is_manual_lead_time: boolean;
-  is_manual_moq: boolean;
-  workspace_id?: string;
-  style?: string;
-  color?: string;
-  size?: string;
 }
 
-interface OTBRecommendation {
-  sku: string;
+interface SizeCurveData {
   style: string;
   color: string;
-  size: string;
-  currentStock: number;
-  availableStock: number;
-  avgDailySales: number;
-  daysUntilStockout: number;
-  leadTimeDays: number;
-  moq: number;
-  safetyStockDays: number;
-  suggestedReorder: number;
+  sizes: {
+    size: string;
+    sales90Days: number;
+    sales365Days: number;
+    currentStock: number;
+    velocity: number;
+    percentOfTotal: number;
+    suggestedQty: number;
+  }[];
+  totalSales: number;
+  totalStock: number;
+}
+
+interface PODraft {
+  vendor: string;
+  items: {
+    style: string;
+    color: string;
+    size: string;
+    qty: number;
+    cost: number;
+    total: number;
+  }[];
+  totalUnits: number;
+  totalCost: number;
+}
+
+interface CategoryData {
+  category: string;
+  skuCount: number;
+  totalSales90: number;
+  totalSales365: number;
+  currentStockValue: number;
   reorderValue: number;
-  velocityTrend: 'up' | 'down' | 'stable';
-  vendorName: string | null;
-  lastSaleDate: string | null;
-  isStockedOut: boolean;
-  stockoutOpportunity: boolean;
-  velocitySource: 'recent' | 'extended' | 'estimated';
-  totalSales90Days: number;
-  totalSales365Days: number;
+  avgSellThrough: number;
 }
 
 export default function Dashboard() {
@@ -71,77 +80,39 @@ export default function Dashboard() {
   const { currentWorkspace } = useWorkspace();
   const supabase = createClient();
   
+  // Data states
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [sales, setSales] = useState<SalesItem[]>([]);
   const [settings, setSettings] = useState<Map<string, ProductSetting>>(new Map());
-  const [recommendations, setRecommendations] = useState<OTBRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastSync, setLastSync] = useState<{inventory?: string, sales?: string}>({});
-  const [filter, setFilter] = useState<'all' | 'reorder' | 'critical' | 'stockout'>('all');
-  const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
-  const [editingSku, setEditingSku] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<ProductSetting>>({});
-  const [showSettings, setShowSettings] = useState(false);
-
-  // Load data from database
+  
+  // View states
+  const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator'>('otb');
+  const [selectedVendor, setSelectedVendor] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  
+  // Load data
   useEffect(() => {
     if (!currentWorkspace) return;
     
     const loadData = async () => {
       setLoading(true);
       
-      // Load inventory
-      const { data: invData, error: invError } = await supabase
-        .from('inventory_levels')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id);
-      
-      if (invError) console.error('Inventory error:', invError);
-      
-      // Load ALL sales history (365 days) for stockout detection
       const oneYearAgo = new Date();
       oneYearAgo.setDate(oneYearAgo.getDate() - 365);
       
-      const { data: salesData, error: salesError } = await supabase
-        .from('sales')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .gte('sale_date', oneYearAgo.toISOString().split('T')[0])
-        .order('sale_date', { ascending: false });
-      
-      if (salesError) console.error('Sales error:', salesError);
-      
-      // Load product settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('product_settings')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id);
-      
-      if (settingsError) console.error('Settings error:', settingsError);
-      
-      // Load sync timestamps
-      const { data: syncData } = await supabase
-        .from('apparelmagic_connections')
-        .select('last_inventory_sync, last_sales_sync')
-        .eq('workspace_id', currentWorkspace.id)
-        .single();
-      
-      if (syncData) {
-        setLastSync({
-          inventory: syncData.last_inventory_sync,
-          sales: syncData.last_sales_sync
-        });
-      }
+      const [{ data: invData }, { data: salesData }, { data: settingsData }] = await Promise.all([
+        supabase.from('inventory_levels').select('*').eq('workspace_id', currentWorkspace.id),
+        supabase.from('sales').select('*').eq('workspace_id', currentWorkspace.id).gte('sale_date', oneYearAgo.toISOString().split('T')[0]),
+        supabase.from('product_settings').select('*').eq('workspace_id', currentWorkspace.id)
+      ]);
       
       if (invData) setInventory(invData);
       if (salesData) setSales(salesData);
       
-      // Convert settings to map
       if (settingsData) {
         const settingsMap = new Map<string, ProductSetting>();
-        for (const s of settingsData) {
-          settingsMap.set(s.sku, s);
-        }
+        for (const s of settingsData) settingsMap.set(s.sku, s);
         setSettings(settingsMap);
       }
       
@@ -151,186 +122,205 @@ export default function Dashboard() {
     loadData();
   }, [currentWorkspace, supabase]);
 
-  // Calculate OTB recommendations
-  useEffect(() => {
-    if (inventory.length === 0) return;
+  // === SIZE CURVE CALCULATIONS ===
+  const sizeCurves = useMemo<SizeCurveData[]>(() => {
+    const curves = new Map<string, SizeCurveData>();
     
-    // Group sales by SKU
-    const salesBySku = new Map<string, SalesItem[]>();
+    // Group sales by style-color
+    const salesByStyleColor = new Map<string, SalesItem[]>();
     for (const sale of sales) {
-      const key = `${sale.style}-${sale.color}-${sale.size}`;
-      if (!salesBySku.has(key)) salesBySku.set(key, []);
-      salesBySku.get(key)!.push(sale);
+      const key = `${sale.style}-${sale.color}`;
+      if (!salesByStyleColor.has(key)) salesByStyleColor.set(key, []);
+      salesByStyleColor.get(key)!.push(sale);
     }
     
-    const recs: OTBRecommendation[] = [];
+    // Group inventory by style-color
+    const invByStyleColor = new Map<string, InventoryItem[]>();
+    for (const item of inventory) {
+      const key = `${item.style}-${item.color}`;
+      if (!invByStyleColor.has(key)) invByStyleColor.set(key, []);
+      invByStyleColor.get(key)!.push(item);
+    }
+    
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    for (const [key, items] of Array.from(invByStyleColor)) {
+      const [style, color] = key.split('-');
+      const styleColorSales = salesByStyleColor.get(key) || [];
+      
+      const sizeData = items.map(item => {
+        const sizeSales = styleColorSales.filter(s => s.size === item.size);
+        const sales90 = sizeSales.filter(s => new Date(s.sale_date) >= ninetyDaysAgo).reduce((sum, s) => sum + s.units, 0);
+        const sales365 = sizeSales.reduce((sum, s) => sum + s.units, 0);
+        
+        return {
+          size: item.size,
+          sales90Days: sales90,
+          sales365Days: sales365,
+          currentStock: item.qty_available,
+          velocity: sales90 / 90,
+          percentOfTotal: 0, // Calculated below
+          suggestedQty: 0 // Calculated below
+        };
+      });
+      
+      const totalSales = sizeData.reduce((sum, s) => sum + s.sales90Days, 0);
+      const totalStock = sizeData.reduce((sum, s) => sum + s.currentStock, 0);
+      
+      // Calculate percentages
+      sizeData.forEach(s => {
+        s.percentOfTotal = totalSales > 0 ? (s.sales90Days / totalSales) * 100 : 0;
+      });
+      
+      // Sort by size (common size order)
+      const sizeOrder = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', 'OS', 'ONE SIZE'];
+      sizeData.sort((a, b) => {
+        const aIdx = sizeOrder.indexOf(a.size.toUpperCase());
+        const bIdx = sizeOrder.indexOf(b.size.toUpperCase());
+        if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+        if (aIdx >= 0) return -1;
+        if (bIdx >= 0) return 1;
+        return a.size.localeCompare(b.size);
+      });
+      
+      curves.set(key, {
+        style,
+        color,
+        sizes: sizeData,
+        totalSales,
+        totalStock
+      });
+    }
+    
+    return Array.from(curves.values()).sort((a, b) => b.totalSales - a.totalSales);
+  }, [inventory, sales]);
+
+  // === CATEGORY DATA ===
+  const categoryData = useMemo<CategoryData[]>(() => {
+    const cats = new Map<string, CategoryData>();
+    
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
     for (const item of inventory) {
-      const skuSales = salesBySku.get(item.sku) || [];
+      // Extract category from style or use default
+      const category = extractCategory(item.style);
       
-      // Split into recent (90d) and extended (365d)
-      const recentSales = skuSales.filter(s => new Date(s.sale_date) >= ninetyDaysAgo);
-      const totalSales90 = recentSales.reduce((sum, s) => sum + (s.units || 0), 0);
-      const totalSales365 = skuSales.reduce((sum, s) => sum + (s.units || 0), 0);
+      const itemSales = sales.filter(s => s.sku === item.sku);
+      const sales90 = itemSales.filter(s => new Date(s.sale_date) >= ninetyDaysAgo).reduce((sum, s) => sum + s.units, 0);
+      const sales365 = itemSales.reduce((sum, s) => sum + s.units, 0);
+      const stockValue = item.qty_available * (item.cost || 0);
       
-      // Determine velocity source and calculate daily sales
-      let avgDailySales = 0;
-      let velocitySource: 'recent' | 'extended' | 'estimated' = 'recent';
-      
-      if (totalSales90 > 0) {
-        avgDailySales = totalSales90 / 90;
-        velocitySource = 'recent';
-      } else if (totalSales365 > 0) {
-        avgDailySales = totalSales365 / 365;
-        velocitySource = 'extended';
-      } else {
-        avgDailySales = 0;
-        velocitySource = 'estimated';
-      }
-      
-      const lastSaleDate = skuSales.length > 0 ? skuSales[0].sale_date : null;
-      const isStockedOut = item.qty_available <= 0 && totalSales365 > 0;
-      const stockoutOpportunity = isStockedOut && (totalSales90 > 10 || totalSales365 > 50);
-      
-      // Calculate trend
-      let trend: 'up' | 'down' | 'stable' = 'stable';
-      if (recentSales.length > 10) {
-        const midPoint = new Date();
-        midPoint.setDate(midPoint.getDate() - 45);
-        const firstHalf = recentSales.filter(s => new Date(s.sale_date) < midPoint).reduce((sum, s) => sum + s.units, 0);
-        const secondHalf = recentSales.filter(s => new Date(s.sale_date) >= midPoint).reduce((sum, s) => sum + s.units, 0);
-        
-        if (firstHalf > 0) {
-          const change = (secondHalf - firstHalf) / firstHalf;
-          if (change > 0.2) trend = 'up';
-          else if (change < -0.2) trend = 'down';
-        }
-      }
-      
+      // Calculate if reorder needed
+      const velocity = sales90 / 90;
       const setting = settings.get(item.sku);
-      const leadTimeDays = setting?.lead_time_days || 60;
-      const moq = setting?.moq || 1;
-      const safetyStockDays = setting?.safety_stock_days || 14;
+      const leadTime = setting?.lead_time_days || 60;
+      const safetyStock = velocity * 14;
+      const target = velocity * (leadTime + 14);
+      const reorderQty = Math.max(0, Math.ceil(target - item.qty_available));
+      const reorderValue = reorderQty * (item.cost || 0);
       
-      const daysUntilStockout = avgDailySales > 0 
-        ? Math.floor(item.qty_available / avgDailySales)
-        : 999;
-      
-      // Restock multiplier for stocked out items
-      const restockMultiplier = isStockedOut ? 1.5 : 1;
-      const targetStock = avgDailySales * (leadTimeDays + safetyStockDays) * restockMultiplier;
-      let suggestedReorder = Math.max(0, Math.ceil(targetStock - item.qty_available));
-      
-      if (suggestedReorder > 0 && moq > 1) {
-        suggestedReorder = Math.ceil(suggestedReorder / moq) * moq;
+      const existing = cats.get(category);
+      if (existing) {
+        existing.skuCount++;
+        existing.totalSales90 += sales90;
+        existing.totalSales365 += sales365;
+        existing.currentStockValue += stockValue;
+        existing.reorderValue += reorderValue;
+      } else {
+        cats.set(category, {
+          category,
+          skuCount: 1,
+          totalSales90: sales90,
+          totalSales365: sales365,
+          currentStockValue: stockValue,
+          reorderValue,
+          avgSellThrough: 0
+        });
       }
-      
-      recs.push({
-        sku: item.sku,
-        style: item.style,
-        color: item.color,
-        size: item.size,
-        currentStock: item.qty_on_hand,
-        availableStock: item.qty_available,
-        avgDailySales,
-        daysUntilStockout,
-        leadTimeDays,
-        moq,
-        safetyStockDays,
-        suggestedReorder,
-        reorderValue: suggestedReorder * (item.cost || 0),
-        velocityTrend: trend,
-        vendorName: setting?.vendor_name || null,
-        lastSaleDate,
-        isStockedOut,
-        stockoutOpportunity,
-        velocitySource,
-        totalSales90Days: totalSales90,
-        totalSales365Days: totalSales365,
-      });
     }
     
-    setRecommendations(recs);
+    // Calculate sell-through rates
+    const result = Array.from(cats.values());
+    result.forEach(cat => {
+      const avgDailySales = cat.totalSales90 / 90;
+      const avgStock = cat.currentStockValue / (cat.skuCount || 1); // Simplified
+      cat.avgSellThrough = avgStock > 0 ? (avgDailySales / avgStock) * 100 : 0;
+    });
+    
+    return result.sort((a, b) => b.totalSales90 - a.totalSales90);
   }, [inventory, sales, settings]);
 
-  // Save settings
-  const saveSettings = async () => {
-    if (!currentWorkspace || !editingSku) return;
+  // === PO GENERATOR ===
+  const poDrafts = useMemo<PODraft[]>(() => {
+    const drafts = new Map<string, PODraft>();
     
-    const rec = recommendations.find(r => r.sku === editingSku);
-    if (!rec) return;
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
-    const newSetting: Partial<ProductSetting> = {
-      ...editForm,
-      workspace_id: currentWorkspace.id,
-      sku: editingSku,
-      style: rec.style,
-      color: rec.color,
-      size: rec.size,
-    };
-    
-    const { error } = await supabase
-      .from('product_settings')
-      .upsert(newSetting, { onConflict: 'workspace_id,sku' });
-    
-    if (error) {
-      console.error('Save error:', error);
-      alert('Failed to save settings');
-      return;
+    for (const item of inventory) {
+      const setting = settings.get(item.sku);
+      const vendor = setting?.vendor_name || 'Unknown Vendor';
+      
+      // Calculate reorder
+      const itemSales = sales.filter(s => s.sku === item.sku && new Date(s.sale_date) >= ninetyDaysAgo);
+      const totalSales = itemSales.reduce((sum, s) => sum + s.units, 0);
+      const velocity = totalSales / 90;
+      
+      const leadTime = setting?.lead_time_days || 60;
+      const moq = setting?.moq || 1;
+      const target = velocity * (leadTime + 14);
+      let reorderQty = Math.max(0, Math.ceil(target - item.qty_available));
+      
+      if (reorderQty > 0 && moq > 1) {
+        reorderQty = Math.ceil(reorderQty / moq) * moq;
+      }
+      
+      if (reorderQty > 0) {
+        if (!drafts.has(vendor)) {
+          drafts.set(vendor, { vendor, items: [], totalUnits: 0, totalCost: 0 });
+        }
+        
+        const draft = drafts.get(vendor)!;
+        draft.items.push({
+          style: item.style,
+          color: item.color,
+          size: item.size,
+          qty: reorderQty,
+          cost: item.cost || 0,
+          total: reorderQty * (item.cost || 0)
+        });
+        draft.totalUnits += reorderQty;
+        draft.totalCost += reorderQty * (item.cost || 0);
+      }
     }
     
-    setSettings(prev => {
-      const next = new Map(prev);
-      next.set(editingSku, { ...prev.get(editingSku), ...editForm } as ProductSetting);
-      return next;
-    });
+    return Array.from(drafts.values()).sort((a, b) => b.totalCost - a.totalCost);
+  }, [inventory, sales, settings]);
+
+  // Export PO to CSV
+  const exportPO = (draft: PODraft) => {
+    let csv = 'Style,Color,Size,Quantity,Unit Cost,Total\n';
+    for (const item of draft.items) {
+      csv += `"${item.style}","${item.color}","${item.size}",${item.qty},$${item.cost.toFixed(2)},$${item.total.toFixed(2)}\n`;
+    }
+    csv += `,,,,TOTAL,$${draft.totalCost.toFixed(2)}\n`;
     
-    setEditingSku(null);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PO_${draft.vendor.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
   };
-
-  const openEdit = (rec: OTBRecommendation) => {
-    setEditingSku(rec.sku);
-    const existing = settings.get(rec.sku);
-    setEditForm({
-      lead_time_days: existing?.lead_time_days || rec.leadTimeDays,
-      moq: existing?.moq || rec.moq,
-      moq_amount: existing?.moq_amount || null,
-      vendor_name: existing?.vendor_name || rec.vendorName || '',
-      safety_stock_days: existing?.safety_stock_days || rec.safetyStockDays,
-      is_manual_lead_time: true,
-      is_manual_moq: true,
-    });
-  };
-
-  // Filter and sort
-  const filteredRecs = recommendations
-    .filter(r => {
-      if (filter === 'reorder') return r.suggestedReorder > 0;
-      if (filter === 'critical') return r.daysUntilStockout < 60;
-      if (filter === 'stockout') return r.stockoutOpportunity;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'days') return a.daysUntilStockout - b.daysUntilStockout;
-      if (sortBy === 'velocity') return b.avgDailySales - a.avgDailySales;
-      return a.currentStock - b.currentStock;
-    });
-
-  // Stats
-  const totalSkus = recommendations.length;
-  const needReorder = recommendations.filter(r => r.suggestedReorder > 0).length;
-  const critical = recommendations.filter(r => r.daysUntilStockout < 60).length;
-  const stockoutOpportunities = recommendations.filter(r => r.stockoutOpportunity).length;
-  const totalReorderValue = recommendations.reduce((sum, r) => sum + r.reorderValue, 0);
 
   if (loading) {
     return (
       <div className="flex min-h-screen bg-[#F5F5F7]">
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading inventory data...</div>
+          <div className="text-gray-500">Loading...</div>
         </div>
       </div>
     );
@@ -340,274 +330,368 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-[#F5F5F7]">
       <Sidebar />
       <div className="flex-1">
+        {/* Header */}
         <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-8 py-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Dashboard</h1>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {inventory.length} SKUs · Last sync: {lastSync.inventory ? new Date(lastSync.inventory).toLocaleDateString() : 'Never'}
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  {showSettings ? 'Hide Settings' : 'Bulk Edit'}
-                </button>
+              <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Live</h1>
+              <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
+                {[
+                  { id: 'otb', label: 'OTB Dashboard' },
+                  { id: 'size-curves', label: 'Size Curves' },
+                  { id: 'categories', label: 'Categories' },
+                  { id: 'po-generator', label: 'PO Generator' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         </header>
 
         <main className="max-w-7xl mx-auto px-8 py-8">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-5 gap-4 mb-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
-              <p className="text-sm font-medium text-gray-500">Total SKUs</p>
-              <p className="text-3xl font-semibold text-gray-900 mt-1">{totalSkus}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
-              <p className="text-sm font-medium text-gray-500">Need Reorder</p>
-              <p className="text-3xl font-semibold text-red-600 mt-1">{needReorder}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
-              <p className="text-sm font-medium text-gray-500">Critical (&lt;60 days)</p>
-              <p className="text-3xl font-semibold text-amber-600 mt-1">{critical}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
-              <p className="text-sm font-medium text-gray-500">Stockout Opps</p>
-              <p className="text-3xl font-semibold text-purple-600 mt-1">{stockoutOpportunities}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
-              <p className="text-sm font-medium text-gray-500">Reorder Value</p>
-              <p className="text-3xl font-semibold text-gray-900 mt-1">${totalReorderValue.toLocaleString()}</p>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex gap-3">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as 'all' | 'reorder' | 'critical' | 'stockout')}
-                className="border border-gray-200 rounded-lg px-4 py-2 text-sm"
-              >
-                <option value="all">All Items</option>
-                <option value="reorder">Need Reorder</option>
-                <option value="critical">Critical</option>
-                <option value="stockout">🔥 Stockout Opportunities</option>
-              </select>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'days' | 'velocity' | 'stock')}
-                className="border border-gray-200 rounded-lg px-4 py-2 text-sm"
-              >
-                <option value="days">Days Until Stockout</option>
-                <option value="velocity">Sales Velocity</option>
-                <option value="stock">Current Stock</option>
-              </select>
-            </div>
-            <span className="text-sm text-gray-500">{filteredRecs.length} items shown</span>
-          </div>
-
-          {/* Data Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50/50">
-                <tr>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-700">SKU</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-700">Vendor</th>
-                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Stock</th>
-                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Daily Sales</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-700">Source</th>
-                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Last Sale</th>
-                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Reorder</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-700">Trend</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-700">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredRecs.map((rec) => (
-                  <tr 
-                    key={rec.sku} 
-                    className={`${rec.suggestedReorder > 0 ? 'bg-red-50/30' : 'hover:bg-gray-50/50'} cursor-pointer`}
-                    onClick={() => openEdit(rec)}
-                  >
-                    <td className="py-4 px-6">
-                      <div className="font-medium text-gray-900">{rec.style}</div>
-                      <div className="text-gray-500">{rec.color} · {rec.size}</div>
-                    </td>
-                    <td className="py-4 px-6 text-gray-600">{rec.vendorName || '—'}</td>
-                    <td className="py-4 px-6 text-right">
-                      <span className={`font-medium ${rec.isStockedOut ? 'text-red-600' : ''}`}>
-                        {rec.currentStock}
-                      </span>
-                      <span className="text-gray-400 text-xs block">{rec.availableStock} avail</span>
-                    </td>
-                    <td className="py-4 px-6 text-right text-gray-600">
-                      {rec.avgDailySales.toFixed(2)}
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        rec.velocitySource === 'recent' ? 'bg-green-100 text-green-700' :
-                        rec.velocitySource === 'extended' ? 'bg-amber-100 text-amber-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {rec.velocitySource === 'recent' ? '90d' : 
-                         rec.velocitySource === 'extended' ? '365d' : 'est'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      {rec.lastSaleDate ? (
-                        <span className="text-gray-600">
-                          {new Date(rec.lastSaleDate).toLocaleDateString()}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">Never</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      {rec.suggestedReorder > 0 ? (
-                        <span className="font-bold text-red-600">{rec.suggestedReorder}</span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      {rec.velocityTrend === 'up' && <span className="text-green-600 font-bold">↑</span>}
-                      {rec.velocityTrend === 'down' && <span className="text-red-600 font-bold">↓</span>}
-                      {rec.velocityTrend === 'stable' && <span className="text-gray-400">→</span>}
-                    </td>
-                    <td className="py-4 px-6">
-                      {rec.stockoutOpportunity ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
-                          🔥 Stockout Opp
-                        </span>
-                      ) : rec.daysUntilStockout < 60 ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                          Critical
-                        </span>
-                      ) : rec.suggestedReorder > 0 ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
-                          Reorder
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                          OK
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {filteredRecs.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                {recommendations.length === 0 
-                  ? 'No data yet. Sync inventory and sales from ApparelMagic.'
-                  : 'No items match the current filter.'}
+          {/* OTB TAB */}
+          {activeTab === 'otb' && <OTBTab inventory={inventory} sales={sales} settings={settings} />}
+          
+          {/* SIZE CURVES TAB */}
+          {activeTab === 'size-curves' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Size Curve Analysis</h2>
+                <p className="text-sm text-gray-500">Top {sizeCurves.length} style-color combinations by sales volume</p>
               </div>
-            )}
-          </div>
+              
+              {sizeCurves.slice(0, 20).map(curve => (
+                <div key={`${curve.style}-${curve.color}`} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{curve.style}</h3>
+                      <p className="text-sm text-gray-500">{curve.color} · {curve.sizes.length} sizes</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-gray-900">{curve.totalSales}</p>
+                      <p className="text-sm text-gray-500">units sold (90d)</p>
+                    </div>
+                  </div>
+                  
+                  {/* Size Distribution Chart */}
+                  <div className="space-y-3">
+                    {curve.sizes.map(size => (
+                      <div key={size.size} className="flex items-center gap-4">
+                        <div className="w-12 text-sm font-medium text-gray-700">{size.size}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full ${size.percentOfTotal > 20 ? 'bg-blue-500' : size.percentOfTotal > 10 ? 'bg-blue-400' : 'bg-blue-300'}`}
+                                style={{ width: `${Math.min(size.percentOfTotal * 2, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-gray-600 w-16">{size.percentOfTotal.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                        <div className="text-right w-24">
+                          <span className="text-sm font-medium">{size.sales90Days}</span>
+                          <span className="text-xs text-gray-400 ml-1">sold</span>
+                        </div>
+                        <div className="text-right w-20">
+                          <span className={`text-sm ${size.currentStock < 10 ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
+                            {size.currentStock}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-1">stock</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Insight */}
+                  {(() => {
+                    const topSize = curve.sizes.reduce((max, s) => s.sales90Days > max.sales90Days ? s : max, curve.sizes[0]);
+                    const lowStock = curve.sizes.filter(s => s.currentStock < 10 && s.sales90Days > 5);
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100 text-sm">
+                        <span className="text-gray-600">Top size: </span>
+                        <span className="font-medium text-gray-900">{topSize.size} ({topSize.percentOfTotal.toFixed(0)}%)</span>
+                        {lowStock.length > 0 && (
+                          <span className="ml-4 text-red-600">
+                            ⚠️ Low stock: {lowStock.map(s => s.size).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* CATEGORIES TAB */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold text-gray-900">Category Performance</h2>
+              
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {categoryData.map(cat => (
+                  <div key={cat.category} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+                    <h3 className="font-semibold text-gray-900 mb-3">{cat.category}</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">SKUs</span>
+                        <span className="font-medium">{cat.skuCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">90d Sales</span>
+                        <span className="font-medium">{cat.totalSales90}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Stock Value</span>
+                        <span className="font-medium">${cat.currentStockValue.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Reorder Need</span>
+                        <span className={`font-bold ${cat.reorderValue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ${cat.reorderValue.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* PO GENERATOR TAB */}
+          {activeTab === 'po-generator' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Purchase Order Generator</h2>
+                <p className="text-sm text-gray-500">{poDrafts.length} vendors with reorder needs</p>
+              </div>
+              
+              {poDrafts.length === 0 && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
+                  <p className="text-gray-500">No reorder needs at this time. All stocked up! 🎉</p>
+                </div>
+              )}
+              
+              {poDrafts.map(draft => (
+                <div key={draft.vendor} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{draft.vendor}</h3>
+                        <p className="text-sm text-gray-500">{draft.items.length} SKUs · {draft.totalUnits} units</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-gray-900">${draft.totalCost.toLocaleString()}</p>
+                        <button
+                          onClick={() => exportPO(draft)}
+                          className="mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+                        >
+                          Export CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50/50">
+                        <tr>
+                          <th className="text-left py-3 px-6 font-semibold text-gray-700">Style</th>
+                          <th className="text-left py-3 px-6 font-semibold text-gray-700">Color</th>
+                          <th className="text-left py-3 px-6 font-semibold text-gray-700">Size</th>
+                          <th className="text-right py-3 px-6 font-semibold text-gray-700">Qty</th>
+                          <th className="text-right py-3 px-6 font-semibold text-gray-700">Cost</th>
+                          <th className="text-right py-3 px-6 font-semibold text-gray-700">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {draft.items.map((item, i) => (
+                          <tr key={i}>
+                            <td className="py-3 px-6 font-medium">{item.style}</td>
+                            <td className="py-3 px-6 text-gray-600">{item.color}</td>
+                            <td className="py-3 px-6 text-gray-600">{item.size}</td>
+                            <td className="py-3 px-6 text-right font-bold text-red-600">{item.qty}</td>
+                            <td className="py-3 px-6 text-right">${item.cost.toFixed(2)}</td>
+                            <td className="py-3 px-6 text-right">${item.total.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       </div>
+    </div>
+  );
+}
 
-      {/* Edit Modal */}
-      {editingSku && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setEditingSku(null)}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Edit Settings</h3>
-              <button 
-                onClick={() => setEditingSku(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vendor Name</label>
-                <input
-                  type="text"
-                  value={editForm.vendor_name || ''}
-                  onChange={(e) => setEditForm({...editForm, vendor_name: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  placeholder="e.g., Vendor Inc."
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Lead Time (days)</label>
-                  <input
-                    type="number"
-                    value={editForm.lead_time_days || 60}
-                    onChange={(e) => setEditForm({...editForm, lead_time_days: parseInt(e.target.value) || 60})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">MOQ</label>
-                  <input
-                    type="number"
-                    value={editForm.moq || 1}
-                    onChange={(e) => setEditForm({...editForm, moq: parseInt(e.target.value) || 1})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Safety Stock (days)</label>
-                  <input
-                    type="number"
-                    value={editForm.safety_stock_days || 14}
-                    onChange={(e) => setEditForm({...editForm, safety_stock_days: parseInt(e.target.value) || 14})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">MOQ $ Amount (optional)</label>
-                  <input
-                    type="number"
-                    value={editForm.moq_amount || ''}
-                    onChange={(e) => setEditForm({...editForm, moq_amount: e.target.value ? parseFloat(e.target.value) : null})}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Min order $"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setEditingSku(null)}
-                className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveSettings}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
+// Helper function to extract category from style
+function extractCategory(style: string): string {
+  const upper = style.toUpperCase();
+  if (upper.includes('DRESS')) return 'Dresses';
+  if (upper.includes('TOP') || upper.includes('SHIRT') || upper.includes('BLOUSE')) return 'Tops';
+  if (upper.includes('PANT') || upper.includes('JEAN') || upper.includes('SHORT')) return 'Bottoms';
+  if (upper.includes('SKIRT')) return 'Skirts';
+  if (upper.includes('JACKET') || upper.includes('COAT') || upper.includes('BLAZER')) return 'Outerwear';
+  if (upper.includes('SWEATER') || upper.includes('CARDIGAN') || upper.includes('KNIT')) return 'Knits';
+  if (upper.includes('SHOE') || upper.includes('HEEL') || upper.includes('BOOT') || upper.includes('SANDAL')) return 'Shoes';
+  if (upper.includes('BAG') || upper.includes('PURSE') || upper.includes('TOTE')) return 'Accessories';
+  return 'Other';
+}
+
+// OTB Tab Component
+function OTBTab({ inventory, sales, settings }: { 
+  inventory: InventoryItem[]; 
+  sales: SalesItem[]; 
+  settings: Map<string, ProductSetting>;
+}) {
+  const [filter, setFilter] = useState<'all' | 'reorder' | 'critical'>('all');
+  const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
+  
+  const recommendations = useMemo(() => {
+    const recs: any[] = [];
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    for (const item of inventory) {
+      const itemSales = sales.filter(s => s.sku === item.sku && new Date(s.sale_date) >= ninetyDaysAgo);
+      const totalSales = itemSales.reduce((sum, s) => sum + s.units, 0);
+      const velocity = totalSales / 90;
+      
+      const setting = settings.get(item.sku);
+      const leadTime = setting?.lead_time_days || 60;
+      const moq = setting?.moq || 1;
+      
+      const daysUntil = velocity > 0 ? Math.floor(item.qty_available / velocity) : 999;
+      const target = velocity * (leadTime + 14);
+      let reorder = Math.max(0, Math.ceil(target - item.qty_available));
+      if (reorder > 0 && moq > 1) reorder = Math.ceil(reorder / moq) * moq;
+      
+      recs.push({
+        ...item,
+        velocity,
+        daysUntil,
+        reorder,
+        reorderValue: reorder * (item.cost || 0)
+      });
+    }
+    return recs;
+  }, [inventory, sales, settings]);
+  
+  const filtered = recommendations
+    .filter(r => {
+      if (filter === 'reorder') return r.reorder > 0;
+      if (filter === 'critical') return r.daysUntil < 60;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'days') return a.daysUntil - b.daysUntil;
+      if (sortBy === 'velocity') return b.velocity - a.velocity;
+      return a.qty_available - b.qty_available;
+    });
+
+  return (
+    <div>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
+          <p className="text-sm font-medium text-gray-500">Total SKUs</p>
+          <p className="text-3xl font-semibold text-gray-900 mt-1">{inventory.length}</p>
         </div>
-      )}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
+          <p className="text-sm font-medium text-gray-500">Need Reorder</p>
+          <p className="text-3xl font-semibold text-red-600 mt-1">{recommendations.filter(r => r.reorder > 0).length}</p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
+          <p className="text-sm font-medium text-gray-500">Critical (&lt;60 days)</p>
+          <p className="text-3xl font-semibold text-amber-600 mt-1">{recommendations.filter(r => r.daysUntil < 60).length}</p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
+          <p className="text-sm font-medium text-gray-500">Reorder Value</p>
+          <p className="text-3xl font-semibold text-gray-900 mt-1">${recommendations.reduce((sum, r) => sum + r.reorderValue, 0).toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex gap-3">
+          <select value={filter} onChange={(e) => setFilter(e.target.value as any)} className="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+            <option value="all">All Items</option>
+            <option value="reorder">Need Reorder</option>
+            <option value="critical">Critical</option>
+          </select>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+            <option value="days">Days Until Stockout</option>
+            <option value="velocity">Sales Velocity</option>
+            <option value="stock">Current Stock</option>
+          </select>
+        </div>
+        <span className="text-sm text-gray-500">{filtered.length} items</span>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50/50">
+            <tr>
+              <th className="text-left py-4 px-6 font-semibold text-gray-700">SKU</th>
+              <th className="text-right py-4 px-6 font-semibold text-gray-700">Stock</th>
+              <th className="text-right py-4 px-6 font-semibold text-gray-700">Daily</th>
+              <th className="text-right py-4 px-6 font-semibold text-gray-700">Days Left</th>
+              <th className="text-right py-4 px-6 font-semibold text-gray-700">Reorder</th>
+              <th className="text-left py-4 px-6 font-semibold text-gray-700">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {filtered.map((rec) => (
+              <tr key={rec.sku} className={rec.reorder > 0 ? 'bg-red-50/30' : 'hover:bg-gray-50/50'}>
+                <td className="py-4 px-6">
+                  <div className="font-medium text-gray-900">{rec.style}</div>
+                  <div className="text-gray-500">{rec.color} · {rec.size}</div>
+                </td>
+                <td className="py-4 px-6 text-right font-medium">{rec.qty_available}</td>
+                <td className="py-4 px-6 text-right text-gray-600">{rec.velocity.toFixed(2)}</td>
+                <td className="py-4 px-6 text-right">
+                  <span className={rec.daysUntil < 60 ? 'text-red-600 font-medium' : 'text-gray-900'}>
+                    {rec.daysUntil === 999 ? '∞' : rec.daysUntil}
+                  </span>
+                </td>
+                <td className="py-4 px-6 text-right">
+                  {rec.reorder > 0 ? (
+                    <span className="font-bold text-red-600">{rec.reorder}</span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+                <td className="py-4 px-6">
+                  {rec.daysUntil < 60 ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Critical</span>
+                  ) : rec.reorder > 0 ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Reorder</span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">OK</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
