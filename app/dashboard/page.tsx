@@ -7,6 +7,11 @@ import { useWorkspace } from '@/app/context/WorkspaceContext';
 import { Sidebar } from '@/app/components/Sidebar';
 import TrendsView from '@/app/components/TrendsView';
 import BulkEditView from '@/app/components/BulkEditView';
+import StockoutCalculator from '@/app/components/StockoutCalculator';
+import WhatIfTool from '@/app/components/WhatIfTool';
+import InventoryHealth from '@/app/components/InventoryHealth';
+import SeasonalPatterns from '@/app/components/SeasonalPatterns';
+import VendorScorecard from '@/app/components/VendorScorecard';
 
 // Types
 interface InventoryItem {
@@ -94,7 +99,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   
   // View states
-  const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator' | 'trends' | 'bulk-edit'>('otb');
+  const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator' | 'trends' | 'bulk-edit' | 'stockouts' | 'whatif' | 'health' | 'seasonal' | 'vendors'>('otb');
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
@@ -387,19 +392,24 @@ export default function Dashboard() {
           <div className="max-w-7xl mx-auto px-8 py-4">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Live</h1>
-              <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
+              <div className="flex gap-2 bg-gray-100 p-1 rounded-xl flex-wrap">
                 {[
-                  { id: 'otb', label: 'OTB Dashboard' },
+                  { id: 'otb', label: 'OTB' },
                   { id: 'size-curves', label: 'Size Curves' },
                   { id: 'categories', label: 'Categories' },
-                  { id: 'po-generator', label: 'PO Generator' },
+                  { id: 'po-generator', label: 'POs' },
                   { id: 'trends', label: 'Trends' },
                   { id: 'bulk-edit', label: 'Bulk Edit' },
+                  { id: 'stockouts', label: 'Stockout $' },
+                  { id: 'whatif', label: 'What-If' },
+                  { id: 'health', label: 'Health' },
+                  { id: 'seasonal', label: 'Seasonal' },
+                  { id: 'vendors', label: 'Vendors' },
                 ].map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       activeTab === tab.id
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
@@ -620,6 +630,21 @@ export default function Dashboard() {
 
           {/* BULK EDIT TAB */}
           {activeTab === 'bulk-edit' && <BulkEditView />}
+          
+          {/* STOCKOUT CALCULATOR TAB */}
+          {activeTab === 'stockouts' && <StockoutCalculator />}
+          
+          {/* WHAT-IF TAB */}
+          {activeTab === 'whatif' && <WhatIfTool />}
+          
+          {/* HEALTH SCORE TAB */}
+          {activeTab === 'health' && <InventoryHealth />}
+          
+          {/* SEASONAL PATTERNS TAB */}
+          {activeTab === 'seasonal' && <SeasonalPatterns />}
+          
+          {/* VENDOR SCORECARD TAB */}
+          {activeTab === 'vendors' && <VendorScorecard />}
         </main>
       </div>
     </div>
