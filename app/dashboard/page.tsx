@@ -66,36 +66,40 @@ export default function Dashboard() {
     
     const loadProducts = async () => {
       console.log('Loading products for workspace:', currentWorkspace.id);
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error loading products:', error);
-        return;
-      }
-      
-      console.log('Products query result:', { count: data?.length, data });
-      
-      if (data && data.length > 0) {
-        // Convert DB format to app format
-        const appProducts: Product[] = data.map(p => ({
-          sku: p.sku || p.style,
-          style: p.style,
-          color: p.color,
-          size: p.size,
-          category: p.category || '',
-          cost: p.cost || 0,
-          season: p.season || 'Core',
-          leadTimeDays: p.lead_time_days || 90,
-          vendor: p.vendor || '',
-        }));
-        console.log('Setting products:', appProducts);
-        setProducts(appProducts);
-      } else {
-        console.log('No products found in database');
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('workspace_id', currentWorkspace.id)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('Error loading products:', error);
+          return;
+        }
+        
+        console.log('Products query result:', { count: data?.length });
+        
+        if (data && data.length > 0) {
+          // Convert DB format to app format
+          const appProducts: Product[] = data.map(p => ({
+            sku: p.sku || p.style,
+            style: p.style,
+            color: p.color,
+            size: p.size,
+            category: p.category || '',
+            cost: p.cost || 0,
+            season: p.season || 'Core',
+            leadTimeDays: p.lead_time_days || 90,
+            vendor: p.vendor || '',
+          }));
+          console.log('Setting products:', appProducts.length);
+          setProducts(appProducts);
+        } else {
+          console.log('No products found in database');
+        }
+      } catch (err) {
+        console.error('Exception loading products:', err);
       }
     };
     
