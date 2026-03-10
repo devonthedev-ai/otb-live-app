@@ -20,17 +20,8 @@ export default function IntegrationsPage() {
   const [amConnected, setAmConnected] = useState(false);
   
   // Sync states
-  const [syncingProducts, setSyncingProducts] = useState(false);
-  const [syncingInventory, setSyncingInventory] = useState(false);
-  const [syncingSales, setSyncingSales] = useState(false);
-  const [syncingVendors, setSyncingVendors] = useState(false);
-  
-  const [syncStatus, setSyncStatus] = useState<{
-    lastProductSync: string | null;
-    lastInventorySync: string | null;
-    lastSalesSync: string | null;
-    lastVendorSync: string | null;
-  }>({ lastProductSync: null, lastInventorySync: null, lastSalesSync: null, lastVendorSync: null });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
   // Check ApparelMagic connection status
   useEffect(() => {
@@ -40,23 +31,18 @@ export default function IntegrationsPage() {
       try {
         const { data, error } = await supabase
           .from('apparelmagic_connections')
-          .select('last_sync_at, last_inventory_sync, last_sales_sync, last_vendor_sync')
+          .select('last_sync_at')
           .eq('workspace_id', currentWorkspace.id)
           .maybeSingle();
-        
+
         if (error) {
           console.error('Error checking connection:', error);
           return;
         }
-        
+
         if (data) {
           setAmConnected(true);
-          setSyncStatus({
-            lastProductSync: data.last_sync_at,
-            lastInventorySync: data.last_inventory_sync,
-            lastSalesSync: data.last_sales_sync,
-            lastVendorSync: data.last_vendor_sync,
-          });
+          setLastSync(data.last_sync_at);
         }
       } catch (err) {
         console.error('Connection check failed:', err);
@@ -117,107 +103,29 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleSyncProducts = async () => {
+  const handleSyncAll = async () => {
     if (!currentWorkspace) return;
-    setSyncingProducts(true);
-    
-    try {
-      const response = await fetch('/api/apparelmagic/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSyncStatus(prev => ({ ...prev, lastProductSync: new Date().toISOString() }));
-        alert(`Synced ${data.productsSynced} products!`);
-      } else {
-        alert(data.error || 'Product sync failed');
-      }
-    } catch (error) {
-      alert('Product sync failed. Please try again.');
-    } finally {
-      setSyncingProducts(false);
-    }
-  };
+    setIsSyncing(true);
 
-  const handleSyncInventory = async () => {
-    if (!currentWorkspace) return;
-    setSyncingInventory(true);
-    
     try {
-      const response = await fetch('/api/apparelmagic/sync-inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSyncStatus(prev => ({ ...prev, lastInventorySync: new Date().toISOString() }));
-        alert(`Synced ${data.inventorySynced} inventory records!`);
-      } else {
-        alert(data.error || 'Inventory sync failed');
-      }
-    } catch (error) {
-      alert('Inventory sync failed. Please try again.');
-    } finally {
-      setSyncingInventory(false);
-    }
-  };
-
-  const handleSyncSales = async () => {
-    if (!currentWorkspace) return;
-    setSyncingSales(true);
-    
-    try {
-      const response = await fetch('/api/apparelmagic/sync-sales', {
+      const response = await fetch('/api/apparelmagic/sync-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspaceId: currentWorkspace.id, daysBack: 90 }),
       });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSyncStatus(prev => ({ ...prev, lastSalesSync: new Date().toISOString() }));
-        alert(`Synced ${data.salesRecordsSynced} sales records from ${data.invoicesSynced} invoices!`);
-      } else {
-        alert(data.error || 'Sales sync failed');
-      }
-    } catch (error) {
-      alert('Sales sync failed. Please try again.');
-    } finally {
-      setSyncingSales(false);
-    }
-  };
 
-  const handleSyncVendors = async () => {
-    if (!currentWorkspace) return;
-    setSyncingVendors(true);
-    
-    try {
-      const response = await fetch('/api/apparelmagic/sync-vendors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
-      });
-      
       const data = await response.json();
-      
+
       if (response.ok) {
-        setSyncStatus(prev => ({ ...prev, lastVendorSync: new Date().toISOString() }));
-        alert(`Synced ${data.vendorsSynced} vendors and updated ${data.productsUpdated} products!`);
+        setLastSync(new Date().toISOString());
+        alert(`✅ ${data.message}`);
       } else {
-        alert(data.error || 'Vendor sync failed');
+        alert(data.error || 'Sync failed');
       }
     } catch (error) {
-      alert('Vendor sync failed. Please try again.');
+      alert('Sync failed. Please try again.');
     } finally {
-      setSyncingVendors(false);
+      setIsSyncing(false);
     }
   };
 
@@ -360,54 +268,26 @@ export default function IntegrationsPage() {
               </form>
             ) : (
               <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-4 gap-2">
-                  <button
-                    onClick={handleSyncProducts}
-                    disabled={syncingProducts}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 text-sm"
-                  >
-                    {syncingProducts ? 'Syncing...' : 'Sync Products'}
-                  </button>
-                  
-                  <button
-                    onClick={handleSyncInventory}
-                    disabled={syncingInventory}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 text-sm"
-                  >
-                    {syncingInventory ? 'Syncing...' : 'Sync Inventory'}
-                  </button>
-                  
-                  <button
-                    onClick={handleSyncSales}
-                    disabled={syncingSales}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 text-sm"
-                  >
-                    {syncingSales ? 'Syncing...' : 'Sync Sales'}
-                  </button>
+                <button
+                  onClick={handleSyncAll}
+                  disabled={isSyncing}
+                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSyncing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>🔄 Sync All Data</>
+                  )}
+                </button>
 
-                  <button
-                    onClick={handleSyncVendors}
-                    disabled={syncingVendors}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 text-sm"
-                  >
-                    {syncingVendors ? 'Syncing...' : 'Sync Vendors'}
-                  </button>
-                </div>
-                
-                <div className="text-xs text-gray-500 space-y-1">
-                  {syncStatus.lastProductSync && (
-                    <p>Products: {new Date(syncStatus.lastProductSync).toLocaleString()}</p>
-                  )}
-                  {syncStatus.lastInventorySync && (
-                    <p>Inventory: {new Date(syncStatus.lastInventorySync).toLocaleString()}</p>
-                  )}
-                  {syncStatus.lastSalesSync && (
-                    <p>Sales: {new Date(syncStatus.lastSalesSync).toLocaleString()}</p>
-                  )}
-                  {syncStatus.lastVendorSync && (
-                    <p>Vendors: {new Date(syncStatus.lastVendorSync).toLocaleString()}</p>
-                  )}
-                </div>
+                {lastSync && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Last synced: {new Date(lastSync).toLocaleString()}
+                  </p>
+                )}
               </div>
             )}
           </div>
