@@ -58,6 +58,12 @@ interface OTBRecommendation {
   reorderValue: number;
   velocityTrend: 'up' | 'down' | 'stable';
   vendorName: string | null;
+  lastSaleDate: string | null;
+  isStockedOut: boolean;
+  stockoutOpportunity: boolean;
+  velocitySource: 'recent' | 'extended' | 'estimated';
+  totalSales90Days: number;
+  totalSales365Days: number;
 }
 
 export default function Dashboard() {
@@ -71,7 +77,7 @@ export default function Dashboard() {
   const [recommendations, setRecommendations] = useState<OTBRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<{inventory?: string, sales?: string}>({});
-  const [filter, setFilter] = useState<'all' | 'reorder' | 'critical'>('all');
+  const [filter, setFilter] = useState<'all' | 'reorder' | 'critical' | 'stockout'>('all');
   const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProductSetting>>({});
@@ -92,15 +98,16 @@ export default function Dashboard() {
       
       if (invError) console.error('Inventory error:', invError);
       
-      // Load sales (last 90 days)
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // Load ALL sales history (365 days) for stockout detection
+      const oneYearAgo = new Date();
+      oneYearAgo.setDate(oneYearAgo.getDate() - 365);
       
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
-        .gte('sale_date', ninetyDaysAgo.toISOString().split('T')[0]);
+        .gte('sale_date', oneYearAgo.toISOString().split('T')[0])
+        .order('sale_date', { ascending: false });
       
       if (salesError) console.error('Sales error:', salesError);
       
@@ -156,46 +163,66 @@ export default function Dashboard() {
       salesBySku.get(key)!.push(sale);
     }
     
-    // Calculate for each inventory item
     const recs: OTBRecommendation[] = [];
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
     for (const item of inventory) {
       const skuSales = salesBySku.get(item.sku) || [];
-      const totalUnits = skuSales.reduce((sum, s) => sum + (s.units || 0), 0);
       
-      // 90-day average daily sales
-      const avgDailySales = totalUnits / 90;
+      // Split into recent (90d) and extended (365d)
+      const recentSales = skuSales.filter(s => new Date(s.sale_date) >= ninetyDaysAgo);
+      const totalSales90 = recentSales.reduce((sum, s) => sum + (s.units || 0), 0);
+      const totalSales365 = skuSales.reduce((sum, s) => sum + (s.units || 0), 0);
       
-      // Calculate trend (compare first 45 days to last 45 days)
-      const midPoint = new Date();
-      midPoint.setDate(midPoint.getDate() - 45);
-      const firstHalf = skuSales.filter(s => new Date(s.sale_date) < midPoint).reduce((sum, s) => sum + s.units, 0);
-      const secondHalf = skuSales.filter(s => new Date(s.sale_date) >= midPoint).reduce((sum, s) => sum + s.units, 0);
+      // Determine velocity source and calculate daily sales
+      let avgDailySales = 0;
+      let velocitySource: 'recent' | 'extended' | 'estimated' = 'recent';
       
-      let trend: 'up' | 'down' | 'stable' = 'stable';
-      if (firstHalf > 0) {
-        const change = (secondHalf - firstHalf) / firstHalf;
-        if (change > 0.2) trend = 'up';
-        else if (change < -0.2) trend = 'down';
+      if (totalSales90 > 0) {
+        avgDailySales = totalSales90 / 90;
+        velocitySource = 'recent';
+      } else if (totalSales365 > 0) {
+        avgDailySales = totalSales365 / 365;
+        velocitySource = 'extended';
+      } else {
+        avgDailySales = 0;
+        velocitySource = 'estimated';
       }
       
-      // Get settings or defaults
+      const lastSaleDate = skuSales.length > 0 ? skuSales[0].sale_date : null;
+      const isStockedOut = item.qty_available <= 0 && totalSales365 > 0;
+      const stockoutOpportunity = isStockedOut && (totalSales90 > 10 || totalSales365 > 50);
+      
+      // Calculate trend
+      let trend: 'up' | 'down' | 'stable' = 'stable';
+      if (recentSales.length > 10) {
+        const midPoint = new Date();
+        midPoint.setDate(midPoint.getDate() - 45);
+        const firstHalf = recentSales.filter(s => new Date(s.sale_date) < midPoint).reduce((sum, s) => sum + s.units, 0);
+        const secondHalf = recentSales.filter(s => new Date(s.sale_date) >= midPoint).reduce((sum, s) => sum + s.units, 0);
+        
+        if (firstHalf > 0) {
+          const change = (secondHalf - firstHalf) / firstHalf;
+          if (change > 0.2) trend = 'up';
+          else if (change < -0.2) trend = 'down';
+        }
+      }
+      
       const setting = settings.get(item.sku);
       const leadTimeDays = setting?.lead_time_days || 60;
       const moq = setting?.moq || 1;
       const safetyStockDays = setting?.safety_stock_days || 14;
       
-      // Days until stockout
       const daysUntilStockout = avgDailySales > 0 
         ? Math.floor(item.qty_available / avgDailySales)
         : 999;
       
-      // Suggested reorder calculation
-      // Target = (lead time + safety stock) * daily sales
-      const targetStock = avgDailySales * (leadTimeDays + safetyStockDays);
+      // Restock multiplier for stocked out items
+      const restockMultiplier = isStockedOut ? 1.5 : 1;
+      const targetStock = avgDailySales * (leadTimeDays + safetyStockDays) * restockMultiplier;
       let suggestedReorder = Math.max(0, Math.ceil(targetStock - item.qty_available));
       
-      // Apply MOQ - round up to nearest MOQ
       if (suggestedReorder > 0 && moq > 1) {
         suggestedReorder = Math.ceil(suggestedReorder / moq) * moq;
       }
@@ -215,7 +242,13 @@ export default function Dashboard() {
         suggestedReorder,
         reorderValue: suggestedReorder * (item.cost || 0),
         velocityTrend: trend,
-        vendorName: setting?.vendor_name || null
+        vendorName: setting?.vendor_name || null,
+        lastSaleDate,
+        isStockedOut,
+        stockoutOpportunity,
+        velocitySource,
+        totalSales90Days: totalSales90,
+        totalSales365Days: totalSales365,
       });
     }
     
@@ -248,7 +281,6 @@ export default function Dashboard() {
       return;
     }
     
-    // Update local state
     setSettings(prev => {
       const next = new Map(prev);
       next.set(editingSku, { ...prev.get(editingSku), ...editForm } as ProductSetting);
@@ -258,7 +290,6 @@ export default function Dashboard() {
     setEditingSku(null);
   };
 
-  // Open edit modal
   const openEdit = (rec: OTBRecommendation) => {
     setEditingSku(rec.sku);
     const existing = settings.get(rec.sku);
@@ -278,6 +309,7 @@ export default function Dashboard() {
     .filter(r => {
       if (filter === 'reorder') return r.suggestedReorder > 0;
       if (filter === 'critical') return r.daysUntilStockout < 60;
+      if (filter === 'stockout') return r.stockoutOpportunity;
       return true;
     })
     .sort((a, b) => {
@@ -290,6 +322,7 @@ export default function Dashboard() {
   const totalSkus = recommendations.length;
   const needReorder = recommendations.filter(r => r.suggestedReorder > 0).length;
   const critical = recommendations.filter(r => r.daysUntilStockout < 60).length;
+  const stockoutOpportunities = recommendations.filter(r => r.stockoutOpportunity).length;
   const totalReorderValue = recommendations.reduce((sum, r) => sum + r.reorderValue, 0);
 
   if (loading) {
@@ -307,7 +340,6 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-[#F5F5F7]">
       <Sidebar />
       <div className="flex-1">
-        {/* Header */}
         <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-8 py-4">
             <div className="flex items-center justify-between">
@@ -331,7 +363,7 @@ export default function Dashboard() {
 
         <main className="max-w-7xl mx-auto px-8 py-8">
           {/* Stats Cards */}
-          <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-5 gap-4 mb-8">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
               <p className="text-sm font-medium text-gray-500">Total SKUs</p>
               <p className="text-3xl font-semibold text-gray-900 mt-1">{totalSkus}</p>
@@ -345,44 +377,27 @@ export default function Dashboard() {
               <p className="text-3xl font-semibold text-amber-600 mt-1">{critical}</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
+              <p className="text-sm font-medium text-gray-500">Stockout Opps</p>
+              <p className="text-3xl font-semibold text-purple-600 mt-1">{stockoutOpportunities}</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
               <p className="text-sm font-medium text-gray-500">Reorder Value</p>
               <p className="text-3xl font-semibold text-gray-900 mt-1">${totalReorderValue.toLocaleString()}</p>
             </div>
           </div>
-
-          {/* Settings Panel */}
-          {showSettings && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Settings Guide</h3>
-              <div className="grid grid-cols-3 gap-6 text-sm">
-                <div>
-                  <p className="font-medium text-gray-700 mb-1">Lead Time</p>
-                  <p className="text-gray-500">Days from order to receipt. Default: 60 days</p>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-700 mb-1">MOQ (Minimum Order Qty)</p>
-                  <p className="text-gray-500">Smallest quantity you can order. Default: 1</p>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-700 mb-1">Safety Stock</p>
-                  <p className="text-gray-500">Buffer days of inventory. Default: 14 days</p>
-                </div>
-              </div>
-              <p className="text-sm text-gray-400 mt-4">Click any row in the table to edit settings for that SKU.</p>
-            </div>
-          )}
 
           {/* Controls */}
           <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
             <div className="flex gap-3">
               <select
                 value={filter}
-                onChange={(e) => setFilter(e.target.value as 'all' | 'reorder' | 'critical')}
+                onChange={(e) => setFilter(e.target.value as 'all' | 'reorder' | 'critical' | 'stockout')}
                 className="border border-gray-200 rounded-lg px-4 py-2 text-sm"
               >
                 <option value="all">All Items</option>
                 <option value="reorder">Need Reorder</option>
                 <option value="critical">Critical</option>
+                <option value="stockout">🔥 Stockout Opportunities</option>
               </select>
               <select
                 value={sortBy}
@@ -406,9 +421,8 @@ export default function Dashboard() {
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Vendor</th>
                   <th className="text-right py-4 px-6 font-semibold text-gray-700">Stock</th>
                   <th className="text-right py-4 px-6 font-semibold text-gray-700">Daily Sales</th>
-                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Days Left</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-700">Lead</th>
-                  <th className="text-center py-4 px-6 font-semibold text-gray-700">MOQ</th>
+                  <th className="text-center py-4 px-6 font-semibold text-gray-700">Source</th>
+                  <th className="text-right py-4 px-6 font-semibold text-gray-700">Last Sale</th>
                   <th className="text-right py-4 px-6 font-semibold text-gray-700">Reorder</th>
                   <th className="text-center py-4 px-6 font-semibold text-gray-700">Trend</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Status</th>
@@ -427,25 +441,32 @@ export default function Dashboard() {
                     </td>
                     <td className="py-4 px-6 text-gray-600">{rec.vendorName || '—'}</td>
                     <td className="py-4 px-6 text-right">
-                      <span className="font-medium">{rec.currentStock}</span>
+                      <span className={`font-medium ${rec.isStockedOut ? 'text-red-600' : ''}`}>
+                        {rec.currentStock}
+                      </span>
                       <span className="text-gray-400 text-xs block">{rec.availableStock} avail</span>
                     </td>
                     <td className="py-4 px-6 text-right text-gray-600">
                       {rec.avgDailySales.toFixed(2)}
                     </td>
-                    <td className="py-4 px-6 text-right">
-                      <span className={`font-medium ${
-                        rec.daysUntilStockout < 60 ? 'text-red-600' : 
-                        rec.daysUntilStockout < 120 ? 'text-amber-600' : 'text-green-600'
+                    <td className="py-4 px-6 text-center">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        rec.velocitySource === 'recent' ? 'bg-green-100 text-green-700' :
+                        rec.velocitySource === 'extended' ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-600'
                       }`}>
-                        {rec.daysUntilStockout === 999 ? '∞' : rec.daysUntilStockout}
+                        {rec.velocitySource === 'recent' ? '90d' : 
+                         rec.velocitySource === 'extended' ? '365d' : 'est'}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-center text-gray-600">
-                      {rec.leadTimeDays}d
-                    </td>
-                    <td className="py-4 px-6 text-center text-gray-600">
-                      {rec.moq > 1 ? rec.moq : '—'}
+                    <td className="py-4 px-6 text-right">
+                      {rec.lastSaleDate ? (
+                        <span className="text-gray-600">
+                          {new Date(rec.lastSaleDate).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Never</span>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-right">
                       {rec.suggestedReorder > 0 ? (
@@ -460,7 +481,11 @@ export default function Dashboard() {
                       {rec.velocityTrend === 'stable' && <span className="text-gray-400">→</span>}
                     </td>
                     <td className="py-4 px-6">
-                      {rec.daysUntilStockout < 60 ? (
+                      {rec.stockoutOpportunity ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                          🔥 Stockout Opp
+                        </span>
+                      ) : rec.daysUntilStockout < 60 ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
                           Critical
                         </span>
