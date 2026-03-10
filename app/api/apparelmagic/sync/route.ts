@@ -57,35 +57,34 @@ export async function POST(request: NextRequest) {
     
     const client = new ApparelMagicClient(credentials);
     
-    // Fetch products
-    console.log('Fetching products from ApparelMagic...');
-    let products;
+    // Fetch inventory (has proper Style/Color/Size/SKU breakdown)
+    console.log('Fetching inventory from ApparelMagic for products...');
+    let inventory;
     try {
-      products = await client.getAllProducts();
-      console.log(`Fetched ${products.length} products`);
+      inventory = await client.getAllInventory();
+      console.log(`Fetched ${inventory.length} inventory records`);
     } catch (fetchError) {
-      console.error('Error fetching products:', fetchError);
+      console.error('Error fetching inventory:', fetchError);
       return NextResponse.json(
         { error: `Failed to fetch products: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}` },
         { status: 500 }
       );
     }
     
-    // Transform to our format
-    console.log('Raw products from ApparelMagic:', products.slice(0, 3)); // Log first 3
+    // Transform to our format - using inventory for proper Style/Color/Size/SKU
+    console.log('Raw inventory from ApparelMagic:', inventory.slice(0, 3));
     
-    const transformedProducts = products.map((p) => ({
+    const transformedProducts = inventory.map((item) => ({
       workspace_id: workspaceId,
-      external_id: String(p.id || ''),
-      name: p.name || 'Unknown',
-      sku: p.sku || String(p.id || ''),
-      style: p.style_number || p.name || 'Unknown',
-      color: p.color || 'Unknown',
-      size: p.size || 'Unknown',
-      cost: p.cost || 0,
-      price: p.price || 0,
-      category: p.category || 'Uncategorized',
-      vendor_id: p.vendor_id,
+      external_id: item.sku_id,
+      name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
+      sku: item.sku_concat || item.sku_id,
+      style: item.style_number,
+      color: item.attr_2 || 'Unknown',
+      size: item.size || 'Unknown',
+      cost: parseFloat(item.cost || '0') || 0,
+      price: parseFloat(item.price || '0') || 0,
+      category: 'Uncategorized', // Inventory endpoint doesn't have category
       source: 'apparelmagic',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
