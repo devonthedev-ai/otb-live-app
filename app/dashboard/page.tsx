@@ -451,11 +451,13 @@ export default function Dashboard() {
             </div>
 
             {/* Raw Products View (when loaded from DB) */}
-            {products.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Products ({products.length})
-                </h3>
+            {(() => {
+              console.log('Rendering products section, products.length:', products.length);
+              return products.length > 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Products ({products.length})
+                  </h3>
                 <p className="text-sm text-gray-500 mb-4">
                   Upload inventory and sales CSV files to calculate reorder recommendations.
                 </p>
@@ -491,7 +493,8 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-            )}
+              ) : null;
+            })()}
 
             {/* Controls */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
