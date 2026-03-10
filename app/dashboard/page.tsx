@@ -368,6 +368,14 @@ export default function Dashboard() {
 
         {/* Main Content */}
         <main className="max-w-5xl mx-auto px-8 py-8">
+        
+        {/* Debug: Show products count */}
+        <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-4 mb-4">
+          <p className="text-sm text-yellow-800">
+            <strong>Debug:</strong> Products loaded: {products.length}
+          </p>
+        </div>
+
         {/* Upload Section - Apple Style */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Import Data</h2>
