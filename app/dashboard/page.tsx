@@ -340,6 +340,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-[#F5F5F7]">
+      {(() => { console.log('DASHBOARD RENDER - products.length:', products.length); return null; })()}
       <Sidebar />
       <div className="flex-1">
         {/* Apple-style Header */}
