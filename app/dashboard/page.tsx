@@ -739,7 +739,7 @@ function OTBTab({ inventory: activeInventory, sales, settings, showArchived, set
       });
     }
     return recs;
-  }, [inventory, sales, settings]);
+  }, [activeInventory, sales, settings]);
   
   const filtered = recommendations
     .filter(r => {
@@ -779,7 +779,7 @@ function OTBTab({ inventory: activeInventory, sales, settings, showArchived, set
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
           <p className="text-sm font-medium text-gray-500">Total SKUs</p>
-          <p className="text-3xl font-semibold text-gray-900 mt-1">{inventory.length}</p>
+          <p className="text-3xl font-semibold text-gray-900 mt-1">{activeInventory.length}</p>
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">
           <p className="text-sm font-medium text-gray-500">Need Reorder</p>
