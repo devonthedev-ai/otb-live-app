@@ -91,11 +91,11 @@ export async function POST(request: NextRequest) {
     
     const coreProductIds = new Set(
       Array.from(productSeasons.entries())
-        .filter(([_, season]) => season.toLowerCase() === 'ss26')
+        .filter(([_, season]) => season.toLowerCase() === 'ss18')
         .map(([id, _]) => id)
     );
     
-    console.log(`📊 Found ${coreProductIds.size} SS26 products from ${allAttributes.length} attributes`);
+    console.log(`📊 Found ${coreProductIds.size} SS18 products from ${allAttributes.length} attributes`);
     
     // Also fetch products to map product_id -> style_number
     console.log('📦 Fetching products to map IDs to style numbers...');
@@ -112,9 +112,9 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log(`📊 Mapped to ${coreStyleNumbers.size} SS26 style numbers`);
+    console.log(`📊 Mapped to ${coreStyleNumbers.size} SS18 style numbers`);
     
-    // === FETCH INVENTORY AND FILTER BY SS26 STYLES ===
+    // === FETCH INVENTORY AND FILTER BY SS18 STYLES ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
@@ -125,12 +125,12 @@ export async function POST(request: NextRequest) {
       console.log('📋 Seasons found in inventory:', Array.from(seasonsFromInventory).slice(0, 10));
     }
     
-    // Filter to only SS26 items (check if style_number is in coreStyles)
+    // Filter to only SS18 items (check if style_number is in coreStyles)
     const coreInventory = inventory.filter(item =>
       coreStyleNumbers.has(item.style_number)
     );
     
-    console.log(`📊 Found ${coreInventory.length} SS26 items out of ${inventory.length} total inventory`);
+    console.log(`📊 Found ${coreInventory.length} SS18 items out of ${inventory.length} total inventory`);
     
     // Fetch 2 years of sales for activity analysis
     const twoYearsAgo = new Date();
@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...results,
-      message: `Synced ${results.products} active SS26 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
+      message: `Synced ${results.products} active SS18 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
     });
     
   } catch (error) {
