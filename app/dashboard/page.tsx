@@ -23,6 +23,15 @@ interface InventoryItem {
   qty_available: number;
   cost: number;
   price: number;
+  is_archived?: boolean;
+}
+
+interface ProductInfo {
+  sku: string;
+  style: string;
+  is_archived: boolean;
+  last_sale_date: string | null;
+  total_sold_24mo: number;
 }
 
 interface SalesItem {
@@ -94,9 +103,11 @@ export default function Dashboard() {
   
   // Data states
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [products, setProducts] = useState<ProductInfo[]>([]);
   const [sales, setSales] = useState<SalesItem[]>([]);
   const [settings, setSettings] = useState<Map<string, ProductSetting>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
   
   // View states
   const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator' | 'trends' | 'bulk-edit' | 'stockouts' | 'whatif' | 'health' | 'seasonal' | 'vendors'>('otb');
@@ -113,13 +124,29 @@ export default function Dashboard() {
       const oneYearAgo = new Date();
       oneYearAgo.setDate(oneYearAgo.getDate() - 365);
       
-      const [{ data: invData }, { data: salesData }, { data: settingsData }] = await Promise.all([
+      const [{ data: invData }, { data: salesData }, { data: settingsData }, { data: productsData }] = await Promise.all([
         supabase.from('inventory_levels').select('*').eq('workspace_id', currentWorkspace.id),
         supabase.from('sales').select('*').eq('workspace_id', currentWorkspace.id).gte('sale_date', oneYearAgo.toISOString().split('T')[0]),
-        supabase.from('product_settings').select('*').eq('workspace_id', currentWorkspace.id)
+        supabase.from('product_settings').select('*').eq('workspace_id', currentWorkspace.id),
+        supabase.from('products').select('sku, style, is_archived, last_sale_date, total_sold_24mo').eq('workspace_id', currentWorkspace.id)
       ]);
       
-      if (invData) setInventory(invData);
+      if (productsData) {
+        setProducts(productsData);
+      }
+      
+      // Merge archived status into inventory
+      if (invData && productsData) {
+        const archivedSkus = new Set(productsData.filter(p => p.is_archived).map(p => p.sku));
+        const mergedInventory = invData.map(item => ({
+          ...item,
+          is_archived: archivedSkus.has(item.sku)
+        }));
+        setInventory(mergedInventory);
+      } else if (invData) {
+        setInventory(invData);
+      }
+      
       if (salesData) setSales(salesData);
       
       if (settingsData) {
@@ -133,6 +160,13 @@ export default function Dashboard() {
     
     loadData();
   }, [currentWorkspace, supabase]);
+
+  // Filter inventory based on archived status
+  const activeInventory = useMemo(() => {
+    return showArchived ? inventory : inventory.filter(item => !item.is_archived);
+  }, [inventory, showArchived]);
+  
+  const archivedCount = useMemo(() => inventory.filter(item => item.is_archived).length, [inventory]);
 
   // === SIZE CURVE CALCULATIONS ===
   const sizeCurves = useMemo<SizeCurveData[]>(() => {
@@ -148,7 +182,7 @@ export default function Dashboard() {
     
     // Group inventory by style-color
     const invByStyleColor = new Map<string, InventoryItem[]>();
-    for (const item of inventory) {
+    for (const item of activeInventory) {
       const key = `${item.style}-${item.color}`;
       if (!invByStyleColor.has(key)) invByStyleColor.set(key, []);
       invByStyleColor.get(key)!.push(item);
@@ -260,7 +294,7 @@ export default function Dashboard() {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
-    for (const item of inventory) {
+    for (const item of activeInventory) {
       // Extract category from style or use default
       const category = extractCategory(item.style);
       
@@ -316,7 +350,7 @@ export default function Dashboard() {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
-    for (const item of inventory) {
+    for (const item of activeInventory) {
       const setting = settings.get(item.sku);
       const vendor = setting?.vendor_name || 'Unknown Vendor';
       
@@ -425,7 +459,7 @@ export default function Dashboard() {
 
         <main className="max-w-7xl mx-auto px-8 py-8">
           {/* OTB TAB */}
-          {activeTab === 'otb' && <OTBTab inventory={inventory} sales={sales} settings={settings} />}
+          {activeTab === 'otb' && <OTBTab inventory={activeInventory} sales={sales} settings={settings} showArchived={showArchived} setShowArchived={setShowArchived} archivedCount={archivedCount} />}
           
           {/* SIZE CURVES TAB */}
           {activeTab === 'size-curves' && (
@@ -666,10 +700,13 @@ function extractCategory(style: string): string {
 }
 
 // OTB Tab Component
-function OTBTab({ inventory, sales, settings }: { 
+function OTBTab({ inventory: activeInventory, sales, settings, showArchived, setShowArchived, archivedCount }: { 
   inventory: InventoryItem[]; 
   sales: SalesItem[]; 
   settings: Map<string, ProductSetting>;
+  showArchived: boolean;
+  setShowArchived: (show: boolean) => void;
+  archivedCount: number;
 }) {
   const [filter, setFilter] = useState<'all' | 'reorder' | 'critical'>('all');
   const [sortBy, setSortBy] = useState<'days' | 'velocity' | 'stock'>('days');
@@ -679,7 +716,7 @@ function OTBTab({ inventory, sales, settings }: {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
-    for (const item of inventory) {
+    for (const item of activeInventory) {
       const itemSales = sales.filter(s => s.sku === item.sku && new Date(s.sale_date) >= ninetyDaysAgo);
       const totalSales = itemSales.reduce((sum, s) => sum + s.units, 0);
       const velocity = totalSales / 90;
@@ -718,6 +755,26 @@ function OTBTab({ inventory, sales, settings }: {
 
   return (
     <div>
+      {/* Archive Toggle */}
+      {archivedCount > 0 && (
+        <div className="mb-4 bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">
+              {archivedCount} archived items hidden
+            </span>
+            <span className="text-xs text-gray-400">
+              (No sales in 12+ months, no inventory)
+            </span>
+          </div>
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            {showArchived ? 'Hide Archived' : 'Show Archived'}
+          </button>
+        </div>
+      )}
+      
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5">

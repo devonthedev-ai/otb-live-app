@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
-    const { workspaceId, daysBack = 90 } = body;
+    const { workspaceId, daysBack = 90, archiveThreshold = 365 } = body;
     
     if (!workspaceId) {
       return NextResponse.json(
@@ -59,14 +59,98 @@ export async function POST(request: NextRequest) {
       inventory: 0,
       sales: 0,
       vendors: 0,
+      archived: 0,
+      filtered: 0,
     };
     
-    // === 1. SYNC PRODUCTS & INVENTORY (from inventory endpoint) ===
+    // Fetch 2 years of sales for activity analysis
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setDate(twoYearsAgo.getDate() - 730);
+    
+    console.log('📊 Fetching sales history for activity analysis...');
+    const allInvoices = await client.getAllInvoices(twoYearsAgo.toISOString().split('T')[0]);
+    
+    // Build activity map: sku -> last sale date, total sales
+    const skuActivity = new Map<string, { lastSale: string; totalUnits: number }>();
+    for (const invoice of allInvoices) {
+      if (!invoice.invoice_items) continue;
+      
+      for (const item of invoice.invoice_items) {
+        const existing = skuActivity.get(item.sku_id);
+        if (!existing || new Date(invoice.date) > new Date(existing.lastSale)) {
+          skuActivity.set(item.sku_id, {
+            lastSale: invoice.date,
+            totalUnits: (existing?.totalUnits || 0) + (parseInt(item.qty) || 0)
+          });
+        } else {
+          existing.totalUnits += parseInt(item.qty) || 0;
+        }
+      }
+    }
+    
+    // === 1. SYNC PRODUCTS & INVENTORY WITH FILTERING ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
-    // Transform for products table
-    const transformedProducts = inventory.map((item) => ({
+    const now = new Date();
+    const archiveDate = new Date();
+    archiveDate.setDate(archiveDate.getDate() - archiveThreshold);
+    
+    const activeInventory = [];
+    const archivedSkus = [];
+    
+    for (const item of inventory) {
+      const activity = skuActivity.get(item.sku_id);
+      const daysSinceLastSale = activity 
+        ? Math.floor((now.getTime() - new Date(activity.lastSale).getTime()) / (1000 * 60 * 60 * 24))
+        : 9999;
+      
+      // Filter criteria:
+      // 1. Has sales in last 12 months OR
+      // 2. Has inventory > 0 OR  
+      // 3. Has open PO qty > 0
+      const shouldKeep = 
+        (activity && daysSinceLastSale < archiveThreshold) ||
+        (parseFloat(item.qty_inventory) || 0) > 0 ||
+        (parseFloat(item.qty_open_po) || 0) > 0;
+      
+      if (shouldKeep) {
+        activeInventory.push(item);
+      } else {
+        archivedSkus.push({
+          sku: item.sku_concat || item.sku_id,
+          style: item.style_number,
+          lastSale: activity?.lastSale,
+          daysSinceLastSale,
+        });
+      }
+    }
+    
+    results.filtered = inventory.length - activeInventory.length;
+    results.archived = archivedSkus.length;
+    
+    console.log(`📋 Active: ${activeInventory.length}, Archived: ${archivedSkus.length}`);
+    
+    // Mark archived items in database
+    if (archivedSkus.length > 0) {
+      for (const sku of archivedSkus) {
+        await serviceSupabase
+          .from('products')
+          .upsert({
+            workspace_id: workspaceId,
+            sku: sku.sku,
+            style: sku.style,
+            is_archived: true,
+            archived_at: new Date().toISOString(),
+            archive_reason: sku.lastSale 
+              ? `No sales in ${sku.daysSinceLastSale} days`
+              : 'No sales history',
+          }, { onConflict: 'workspace_id,sku' });
+      }
+    }
+    
+    // Transform active inventory for products table
+    const transformedProducts = activeInventory.map((item) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
       name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
@@ -78,6 +162,9 @@ export async function POST(request: NextRequest) {
       price: parseFloat(item.price || '0') || 0,
       category: 'Uncategorized',
       source: 'apparelmagic',
+      is_archived: false,
+      last_sale_date: skuActivity.get(item.sku_id)?.lastSale || null,
+      total_sold_24mo: skuActivity.get(item.sku_id)?.totalUnits || 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
@@ -92,8 +179,8 @@ export async function POST(request: NextRequest) {
     
     results.products = uniqueProducts.length;
     
-    // Transform for inventory_levels table
-    const transformedInventory = inventory.map((item) => ({
+    // Transform for inventory_levels table (only active)
+    const transformedInventory = activeInventory.map((item) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
       sku: item.sku_concat || item.sku_id,
@@ -123,19 +210,21 @@ export async function POST(request: NextRequest) {
     
     results.inventory = uniqueInventory.length;
     
-    // === 2. SYNC SALES ===
-    console.log('💰 Fetching sales...');
+    // === 2. SYNC SALES (only sync active items' sales) ===
+    console.log('💰 Fetching recent sales...');
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
-    const startDateStr = startDate.toISOString().split('T')[0];
     
-    const invoices = await client.getAllInvoices(startDateStr);
+    const activeSkuSet = new Set(activeInventory.map(i => i.sku_id));
     
     const salesRecords: any[] = [];
-    for (const invoice of invoices) {
-      if (!invoice.invoice_items || !Array.isArray(invoice.invoice_items)) continue;
+    for (const invoice of allInvoices.slice(0, 500)) { // Limit recent invoices
+      if (!invoice.invoice_items) continue;
       
       for (const item of invoice.invoice_items) {
+        // Only sync sales for active items
+        if (!activeSkuSet.has(item.sku_id)) continue;
+        
         salesRecords.push({
           workspace_id: workspaceId,
           external_id: item.id,
@@ -165,7 +254,7 @@ export async function POST(request: NextRequest) {
     
     results.sales = uniqueSales.length;
     
-    // === 3. SYNC VENDORS ===
+    // === 3. SYNC VENDORS (only for active items) ===
     console.log('🏢 Fetching vendors...');
     const vendors = await client.getAllVendors();
     const products = await client.getAllProducts();
@@ -175,31 +264,34 @@ export async function POST(request: NextRequest) {
       vendorMap.set(vendor.id, vendor.name);
     }
     
+    const activeStyles = new Set(activeInventory.map(i => i.style_number));
     let vendorUpdates = 0;
+    
     for (const product of products) {
-      if (product.vendor_id && product.style_number) {
-        const vendorName = vendorMap.get(product.vendor_id);
-        if (vendorName) {
-          const { data: skus } = await serviceSupabase
-            .from('inventory_levels')
-            .select('sku, style')
-            .eq('workspace_id', workspaceId)
-            .eq('style', product.style_number);
-          
-          if (skus && skus.length > 0) {
-            for (const sku of skus) {
-              await serviceSupabase
-                .from('product_settings')
-                .upsert({
-                  workspace_id: workspaceId,
-                  sku: sku.sku,
-                  style: sku.style,
-                  vendor_id: product.vendor_id,
-                  vendor_name: vendorName,
-                }, { onConflict: 'workspace_id,sku' });
-              
-              vendorUpdates++;
-            }
+      if (!product.vendor_id || !product.style_number) continue;
+      if (!activeStyles.has(product.style_number)) continue; // Skip archived styles
+      
+      const vendorName = vendorMap.get(product.vendor_id);
+      if (vendorName) {
+        const { data: skus } = await serviceSupabase
+          .from('inventory_levels')
+          .select('sku, style')
+          .eq('workspace_id', workspaceId)
+          .eq('style', product.style_number);
+        
+        if (skus && skus.length > 0) {
+          for (const sku of skus) {
+            await serviceSupabase
+              .from('product_settings')
+              .upsert({
+                workspace_id: workspaceId,
+                sku: sku.sku,
+                style: sku.style,
+                vendor_id: product.vendor_id,
+                vendor_name: vendorName,
+              }, { onConflict: 'workspace_id,sku' });
+            
+            vendorUpdates++;
           }
         }
       }
@@ -207,22 +299,22 @@ export async function POST(request: NextRequest) {
     
     results.vendors = vendors.length;
     
-    // === 4. UPDATE SYNC TIMESTAMPS ===
-    const now = new Date().toISOString();
+    // === 4. UPDATE SYNC TIMESTAMP ===
+    const nowISO = new Date().toISOString();
     await serviceSupabase
       .from('apparelmagic_connections')
       .update({
-        last_sync_at: now,
-        last_inventory_sync: now,
-        last_sales_sync: now,
-        last_vendor_sync: now,
+        last_sync_at: nowISO,
+        last_inventory_sync: nowISO,
+        last_sales_sync: nowISO,
+        last_vendor_sync: nowISO,
       })
       .eq('workspace_id', workspaceId);
     
     return NextResponse.json({
       success: true,
       ...results,
-      message: `Synced ${results.products} products, ${results.inventory} inventory records, ${results.sales} sales, ${results.vendors} vendors`,
+      message: `Synced ${results.products} active products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
     });
     
   } catch (error) {
