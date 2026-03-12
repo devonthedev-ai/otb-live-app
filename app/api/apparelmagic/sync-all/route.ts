@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
     // Mark archived items in database
     if (archivedSkus.length > 0) {
       for (const sku of archivedSkus) {
+        // Mark in products table
         await serviceSupabase
           .from('products')
           .upsert({
@@ -146,7 +147,29 @@ export async function POST(request: NextRequest) {
               ? `No sales in ${sku.daysSinceLastSale} days`
               : 'No sales history',
           }, { onConflict: 'workspace_id,sku' });
+        
+        // Also mark in inventory_levels (for dashboard filtering)
+        await serviceSupabase
+          .from('inventory_levels')
+          .update({ 
+            is_archived: true,
+            archived_at: new Date().toISOString()
+          })
+          .eq('workspace_id', workspaceId)
+          .eq('sku', sku.sku);
       }
+    }
+    
+    // Also un-archive items that are now active again
+    for (const item of activeInventory) {
+      await serviceSupabase
+        .from('inventory_levels')
+        .update({ 
+          is_archived: false,
+          archived_at: null
+        })
+        .eq('workspace_id', workspaceId)
+        .eq('sku', item.sku_concat || item.sku_id);
     }
     
     // Transform active inventory for products table

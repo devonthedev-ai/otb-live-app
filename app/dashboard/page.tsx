@@ -24,6 +24,7 @@ interface InventoryItem {
   cost: number;
   price: number;
   is_archived?: boolean;
+  archived_at?: string | null;
 }
 
 interface ProductInfo {
@@ -124,29 +125,13 @@ export default function Dashboard() {
       const oneYearAgo = new Date();
       oneYearAgo.setDate(oneYearAgo.getDate() - 365);
       
-      const [{ data: invData }, { data: salesData }, { data: settingsData }, { data: productsData }] = await Promise.all([
+      const [{ data: invData }, { data: salesData }, { data: settingsData }] = await Promise.all([
         supabase.from('inventory_levels').select('*').eq('workspace_id', currentWorkspace.id),
         supabase.from('sales').select('*').eq('workspace_id', currentWorkspace.id).gte('sale_date', oneYearAgo.toISOString().split('T')[0]),
-        supabase.from('product_settings').select('*').eq('workspace_id', currentWorkspace.id),
-        supabase.from('products').select('sku, style, is_archived, last_sale_date, total_sold_24mo').eq('workspace_id', currentWorkspace.id)
+        supabase.from('product_settings').select('*').eq('workspace_id', currentWorkspace.id)
       ]);
       
-      if (productsData) {
-        setProducts(productsData);
-      }
-      
-      // Merge archived status into inventory
-      if (invData && productsData) {
-        const archivedSkus = new Set(productsData.filter(p => p.is_archived).map(p => p.sku));
-        const mergedInventory = invData.map(item => ({
-          ...item,
-          is_archived: archivedSkus.has(item.sku)
-        }));
-        setInventory(mergedInventory);
-      } else if (invData) {
-        setInventory(invData);
-      }
-      
+      if (invData) setInventory(invData);
       if (salesData) setSales(salesData);
       
       if (settingsData) {
