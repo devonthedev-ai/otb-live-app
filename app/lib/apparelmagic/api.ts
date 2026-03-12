@@ -110,6 +110,8 @@ export class ApparelMagicClient {
       pagination
     );
     
+    console.log('Products API response meta:', JSON.stringify(response.meta, null, 2));
+    
     return {
       products: response.response || [],
       lastId: response.meta?.pagination?.last_id || null,
@@ -120,19 +122,42 @@ export class ApparelMagicClient {
   async getAllProducts(): Promise<ApparelMagicProduct[]> {
     const allProducts: ApparelMagicProduct[] = [];
     let lastId: string | undefined;
+    let pageCount = 0;
     
     while (true) {
+      pageCount++;
+      console.log(`Fetching products page ${pageCount}, lastId: ${lastId || 'none'}`);
+      
       // Don't pass pageSize for GET requests - use default 100
       const { products, lastId: newLastId } = await this.getProducts(
         lastId ? { lastId } : undefined
       );
       
+      console.log(`Page ${pageCount}: got ${products.length} products, newLastId: ${newLastId || 'none'}`);
+      
       allProducts.push(...products);
       
-      if (!newLastId) break;
+      if (!newLastId) {
+        console.log('No more pages, breaking');
+        break;
+      }
+      
+      // Safety check - if we got 0 products or same lastId, break
+      if (products.length === 0 || newLastId === lastId) {
+        console.log('Empty page or same lastId, breaking');
+        break;
+      }
+      
       lastId = newLastId;
+      
+      // Safety limit - max 50 pages (5000 products)
+      if (pageCount > 50) {
+        console.log('Hit max page limit');
+        break;
+      }
     }
     
+    console.log(`Total products fetched: ${allProducts.length}`);
     return allProducts;
   }
 
