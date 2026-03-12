@@ -67,16 +67,27 @@ export async function POST(request: NextRequest) {
     console.log('🏷️ Fetching product attributes to check Season field...');
     const allAttributes = await client.getAllProductAttributes();
     
+    // Debug: log sample attributes
+    console.log(`📊 Total attributes fetched: ${allAttributes.length}`);
+    if (allAttributes.length > 0) {
+      console.log('📋 Sample attribute keys:', Object.keys(allAttributes[0]));
+      console.log('📋 Sample attribute:', JSON.stringify(allAttributes[0], null, 2));
+    }
+    
     // Build map of product_id -> season from attributes
     const productSeasons = new Map<string, string>();
+    const uniqueSeasons = new Set<string>();
     for (const attr of allAttributes) {
       const productId = String((attr as any).product_id || '');
       // Season could be in 'season' field or 'attribute_2' field
       const season = (attr as any).season || (attr as any).attribute_2 || (attr as any).attr_2 || '';
       if (productId && season) {
         productSeasons.set(productId, String(season));
+        uniqueSeasons.add(String(season));
       }
     }
+    
+    console.log('📋 Available seasons:', Array.from(uniqueSeasons).slice(0, 20));
     
     const coreProductIds = new Set(
       Array.from(productSeasons.entries())
@@ -106,6 +117,13 @@ export async function POST(request: NextRequest) {
     // === FETCH INVENTORY AND FILTER BY SS26 STYLES ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
+    
+    // Debug: check inventory structure for season
+    if (inventory.length > 0) {
+      console.log('📋 Sample inventory keys:', Object.keys(inventory[0]));
+      const seasonsFromInventory = new Set(inventory.map(i => (i as any).season || (i as any).attr_2 || '').filter(Boolean));
+      console.log('📋 Seasons found in inventory:', Array.from(seasonsFromInventory).slice(0, 10));
+    }
     
     // Filter to only SS26 items (check if style_number is in coreStyles)
     const coreInventory = inventory.filter(item =>
