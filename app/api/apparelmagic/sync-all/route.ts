@@ -63,74 +63,66 @@ export async function POST(request: NextRequest) {
       filtered: 0,
     };
     
-    // === FETCH PRODUCT ATTRIBUTES TO GET SEASON FIELD ===
-    console.log('🏷️ Fetching product attributes to check Season field...');
-    const allAttributes = await client.getAllProductAttributes();
+    // === FETCH ALL PRODUCTS TO GET SEASON FIELD ===
+    console.log('🏷️ Fetching all products to check Season field...');
+    const allProducts = await client.getAllProducts();
     
-    // Debug: log sample attributes
-    console.log(`📊 Total attributes fetched: ${allAttributes.length}`);
-    if (allAttributes.length > 0) {
-      console.log('📋 Sample attribute keys:', Object.keys(allAttributes[0]));
-      console.log('📋 Sample attribute:', JSON.stringify(allAttributes[0], null, 2));
-    }
+    console.log(`📊 Total products fetched: ${allProducts.length}`);
     
-    // Build map of product_id -> season from attributes
+    // Build map of style_number -> season from products
     const productSeasons = new Map<string, string>();
     const uniqueSeasons = new Set<string>();
-    for (const attr of allAttributes) {
-      const productId = String((attr as any).product_id || '');
-      // Season could be in 'season' field or 'attribute_2' field
-      const season = (attr as any).season || (attr as any).attribute_2 || (attr as any).attr_2 || '';
-      if (productId && season) {
-        productSeasons.set(productId, String(season));
+    
+    for (const product of allProducts) {
+      const styleNumber = String((product as any).style_number || '');
+      const season = (product as any).season || '';
+      if (styleNumber && season) {
+        productSeasons.set(styleNumber, String(season));
         uniqueSeasons.add(String(season));
       }
     }
     
     console.log('📋 Available seasons:', Array.from(uniqueSeasons).slice(0, 20));
     
-    const coreProductIds = new Set(
-      Array.from(productSeasons.entries())
-        .filter(([_, season]) => season.toLowerCase() === 'ss18')
-        .map(([id, _]) => id)
-    );
+    // Also try to get season from product_attributes for products that don't have it directly
+    console.log('🏷️ Also fetching product attributes for missing seasons...');
+    const allAttributes = await client.getAllProductAttributes();
     
-    console.log(`📊 Found ${coreProductIds.size} SS18 products from ${allAttributes.length} attributes`);
-    
-    // Also fetch products to map product_id -> style_number
-    console.log('📦 Fetching products to map IDs to style numbers...');
-    const allProducts = await client.getAllProducts();
-    
-    const coreStyleNumbers = new Set<string>();
-    for (const product of allProducts) {
-      const productId = String((product as any).id || '');
-      if (coreProductIds.has(productId)) {
-        const styleNumber = (product as any).style_number;
-        if (styleNumber) {
-          coreStyleNumbers.add(String(styleNumber));
+    for (const attr of allAttributes) {
+      const productId = String((attr as any).product_id || '');
+      const season = (attr as any).season || '';
+      
+      // Find the product to get style_number
+      const matchingProduct = allProducts.find(p => String((p as any).id) === productId);
+      if (matchingProduct && season) {
+        const styleNumber = String((matchingProduct as any).style_number || '');
+        if (styleNumber && !productSeasons.has(styleNumber)) {
+          productSeasons.set(styleNumber, String(season));
+          uniqueSeasons.add(String(season));
         }
       }
     }
     
-    console.log(`📊 Mapped to ${coreStyleNumbers.size} SS18 style numbers`);
+    console.log('📋 Final available seasons:', Array.from(uniqueSeasons).slice(0, 30));
     
-    // === FETCH INVENTORY AND FILTER BY SS18 STYLES ===
+    const coreStyleNumbers = new Set(
+      Array.from(productSeasons.entries())
+        .filter(([_, season]) => season.toLowerCase() === 'ss26')
+        .map(([style, _]) => style)
+    );
+    
+    console.log(`📊 Found ${coreStyleNumbers.size} SS26 styles out of ${productSeasons.size} total with seasons`);
+    
+    // === FETCH INVENTORY AND FILTER BY SS26 STYLES ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
-    // Debug: check inventory structure for season
-    if (inventory.length > 0) {
-      console.log('📋 Sample inventory keys:', Object.keys(inventory[0]));
-      const seasonsFromInventory = new Set(inventory.map(i => (i as any).season || (i as any).attr_2 || '').filter(Boolean));
-      console.log('📋 Seasons found in inventory:', Array.from(seasonsFromInventory).slice(0, 10));
-    }
-    
-    // Filter to only SS18 items (check if style_number is in coreStyles)
+    // Filter to only SS26 items
     const coreInventory = inventory.filter(item =>
       coreStyleNumbers.has(item.style_number)
     );
     
-    console.log(`📊 Found ${coreInventory.length} SS18 items out of ${inventory.length} total inventory`);
+    console.log(`📊 Found ${coreInventory.length} SS26 items out of ${inventory.length} total inventory`);
     
     // Fetch 2 years of sales for activity analysis
     const twoYearsAgo = new Date();
@@ -399,7 +391,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...results,
-      message: `Synced ${results.products} active SS18 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
+      message: `Synced ${results.products} active SS26 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
     });
     
   } catch (error) {
