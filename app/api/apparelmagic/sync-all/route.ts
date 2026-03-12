@@ -63,16 +63,38 @@ export async function POST(request: NextRequest) {
       filtered: 0,
     };
     
-    // === FETCH INVENTORY AND FILTER BY "CORE" ATTRIBUTE ===
+    // === FETCH PRODUCTS TO GET SEASON FIELD ===
+    console.log('🏷️ Fetching products to check Season field...');
+    const allProducts = await client.getAllProducts();
+    
+    // Build map of style_number -> season
+    const productSeasons = new Map<string, string>();
+    for (const product of allProducts) {
+      const styleNumber = (product as any).style_number;
+      const season = (product as any).season;
+      if (styleNumber && season) {
+        productSeasons.set(String(styleNumber), String(season));
+      }
+    }
+    
+    const coreStyles = new Set(
+      Array.from(productSeasons.entries())
+        .filter(([_, season]) => season.toLowerCase() === 'core')
+        .map(([style, _]) => style)
+    );
+    
+    console.log(`📊 Found ${coreStyles.size} Core styles (season = "Core") out of ${allProducts.length} total products`);
+    
+    // === FETCH INVENTORY AND FILTER BY CORE STYLES ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
-    // Filter to only Core items (check attr_2 for "Core")
+    // Filter to only Core items (check if style_number is in coreStyles)
     const coreInventory = inventory.filter(item =>
-      String(item.attr_2).toLowerCase() === 'core'
+      coreStyles.has(item.style_number)
     );
     
-    console.log(`📊 Found ${coreInventory.length} Core items (attr_2 = "Core") out of ${inventory.length} total`);
+    console.log(`📊 Found ${coreInventory.length} Core items out of ${inventory.length} total inventory`);
     
     // Fetch 2 years of sales for activity analysis
     const twoYearsAgo = new Date();
