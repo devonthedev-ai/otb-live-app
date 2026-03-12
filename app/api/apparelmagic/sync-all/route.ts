@@ -67,12 +67,17 @@ export async function POST(request: NextRequest) {
     console.log('🏷️ Fetching product attributes to check Season field...');
     const allAttributes = await client.getAllProductAttributes();
     
+    // Debug: log first attribute to see structure
+    if (allAttributes.length > 0) {
+      console.log('📋 Sample attribute:', JSON.stringify(allAttributes[0], null, 2));
+    }
+    
     // Build map of product_id -> season from attributes
     const productSeasons = new Map<string, string>();
     for (const attr of allAttributes) {
       const productId = String((attr as any).product_id || '');
-      // Season is typically in season, attribute_2, or custom fields
-      const season = (attr as any).season || (attr as any).attribute_2 || '';
+      // Season could be in 'season' field or 'attribute_2' field
+      const season = (attr as any).season || (attr as any).attribute_2 || (attr as any).attr_2 || '';
       if (productId && season) {
         productSeasons.set(productId, String(season));
       }
