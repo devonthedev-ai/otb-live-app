@@ -67,11 +67,6 @@ export async function POST(request: NextRequest) {
     console.log('🏷️ Fetching product attributes to check Season field...');
     const allAttributes = await client.getAllProductAttributes();
     
-    // Debug: log first attribute to see structure
-    if (allAttributes.length > 0) {
-      console.log('📋 Sample attribute:', JSON.stringify(allAttributes[0], null, 2));
-    }
-    
     // Build map of product_id -> season from attributes
     const productSeasons = new Map<string, string>();
     for (const attr of allAttributes) {
@@ -85,11 +80,11 @@ export async function POST(request: NextRequest) {
     
     const coreProductIds = new Set(
       Array.from(productSeasons.entries())
-        .filter(([_, season]) => season.toLowerCase() === 'core')
+        .filter(([_, season]) => season.toLowerCase() === 'ss26')
         .map(([id, _]) => id)
     );
     
-    console.log(`📊 Found ${coreProductIds.size} Core products (season = "Core") from ${allAttributes.length} attributes`);
+    console.log(`📊 Found ${coreProductIds.size} SS26 products from ${allAttributes.length} attributes`);
     
     // Also fetch products to map product_id -> style_number
     console.log('📦 Fetching products to map IDs to style numbers...');
@@ -106,18 +101,18 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log(`📊 Mapped to ${coreStyleNumbers.size} Core style numbers`);
+    console.log(`📊 Mapped to ${coreStyleNumbers.size} SS26 style numbers`);
     
-    // === FETCH INVENTORY AND FILTER BY CORE STYLES ===
+    // === FETCH INVENTORY AND FILTER BY SS26 STYLES ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
-    // Filter to only Core items (check if style_number is in coreStyles)
+    // Filter to only SS26 items (check if style_number is in coreStyles)
     const coreInventory = inventory.filter(item =>
       coreStyleNumbers.has(item.style_number)
     );
     
-    console.log(`📊 Found ${coreInventory.length} Core items out of ${inventory.length} total inventory`);
+    console.log(`📊 Found ${coreInventory.length} SS26 items out of ${inventory.length} total inventory`);
     
     // Fetch 2 years of sales for activity analysis
     const twoYearsAgo = new Date();
@@ -386,7 +381,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...results,
-      message: `Synced ${results.products} active Core products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
+      message: `Synced ${results.products} active SS26 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
     });
     
   } catch (error) {
