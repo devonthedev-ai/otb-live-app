@@ -63,27 +63,45 @@ export async function POST(request: NextRequest) {
       filtered: 0,
     };
     
-    // === FETCH PRODUCTS TO GET SEASON FIELD ===
-    console.log('🏷️ Fetching products to check Season field...');
-    const allProducts = await client.getAllProducts();
+    // === FETCH PRODUCT ATTRIBUTES TO GET SEASON FIELD ===
+    console.log('🏷️ Fetching product attributes to check Season field...');
+    const allAttributes = await client.getAllProductAttributes();
     
-    // Build map of style_number -> season
+    // Build map of product_id -> season from attributes
     const productSeasons = new Map<string, string>();
-    for (const product of allProducts) {
-      const styleNumber = (product as any).style_number;
-      const season = (product as any).season;
-      if (styleNumber && season) {
-        productSeasons.set(String(styleNumber), String(season));
+    for (const attr of allAttributes) {
+      const productId = String((attr as any).product_id || '');
+      // Season is typically in season, attribute_2, or custom fields
+      const season = (attr as any).season || (attr as any).attribute_2 || '';
+      if (productId && season) {
+        productSeasons.set(productId, String(season));
       }
     }
     
-    const coreStyles = new Set(
+    const coreProductIds = new Set(
       Array.from(productSeasons.entries())
         .filter(([_, season]) => season.toLowerCase() === 'core')
-        .map(([style, _]) => style)
+        .map(([id, _]) => id)
     );
     
-    console.log(`📊 Found ${coreStyles.size} Core styles (season = "Core") out of ${allProducts.length} total products`);
+    console.log(`📊 Found ${coreProductIds.size} Core products (season = "Core") from ${allAttributes.length} attributes`);
+    
+    // Also fetch products to map product_id -> style_number
+    console.log('📦 Fetching products to map IDs to style numbers...');
+    const allProducts = await client.getAllProducts();
+    
+    const coreStyleNumbers = new Set<string>();
+    for (const product of allProducts) {
+      const productId = String((product as any).id || '');
+      if (coreProductIds.has(productId)) {
+        const styleNumber = (product as any).style_number;
+        if (styleNumber) {
+          coreStyleNumbers.add(String(styleNumber));
+        }
+      }
+    }
+    
+    console.log(`📊 Mapped to ${coreStyleNumbers.size} Core style numbers`);
     
     // === FETCH INVENTORY AND FILTER BY CORE STYLES ===
     console.log('📦 Fetching inventory...');
@@ -91,7 +109,7 @@ export async function POST(request: NextRequest) {
     
     // Filter to only Core items (check if style_number is in coreStyles)
     const coreInventory = inventory.filter(item =>
-      coreStyles.has(item.style_number)
+      coreStyleNumbers.has(item.style_number)
     );
     
     console.log(`📊 Found ${coreInventory.length} Core items out of ${inventory.length} total inventory`);

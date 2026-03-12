@@ -272,6 +272,43 @@ export class ApparelMagicClient {
     
     return allVendors;
   }
+
+  // Get product attributes
+  async getProductAttributes(pagination?: PaginationParams): Promise<{
+    attributes: any[];
+    lastId: string | null;
+  }> {
+    const response = await this.request<any>(
+      'product_attributes',
+      'GET',
+      undefined,
+      pagination
+    );
+    
+    return {
+      attributes: response.response || [],
+      lastId: response.meta?.pagination?.last_id || null,
+    };
+  }
+
+  // Get all product attributes (handles pagination)
+  async getAllProductAttributes(): Promise<any[]> {
+    const allAttributes: any[] = [];
+    let lastId: string | undefined;
+    
+    while (true) {
+      const { attributes, lastId: newLastId } = await this.getProductAttributes(
+        lastId ? { lastId } : undefined
+      );
+      
+      allAttributes.push(...attributes);
+      
+      if (!newLastId) break;
+      lastId = newLastId;
+    }
+    
+    return allAttributes;
+  }
 }
 
 // Types
