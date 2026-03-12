@@ -802,7 +802,7 @@ function OTBTab({ inventory: activeInventory, sales, settings, showArchived, set
         <table className="w-full text-sm">
           <thead className="bg-gray-50/50">
             <tr>
-              <th className="text-left py-4 px-6 font-semibold text-gray-700">SKU</th>
+              <th className="text-left py-4 px-6 font-semibold text-gray-700">Product</th>
               <th className="text-right py-4 px-6 font-semibold text-gray-700">Stock</th>
               <th className="text-right py-4 px-6 font-semibold text-gray-700">Daily</th>
               <th className="text-right py-4 px-6 font-semibold text-gray-700">Days Left</th>
@@ -816,6 +816,7 @@ function OTBTab({ inventory: activeInventory, sales, settings, showArchived, set
                 <td className="py-4 px-6">
                   <div className="font-medium text-gray-900">{rec.style}</div>
                   <div className="text-gray-500">{rec.color} · {rec.size}</div>
+                  <div className="text-xs text-gray-400">{rec.sku}</div>
                 </td>
                 <td className="py-4 px-6 text-right font-medium">{rec.qty_available}</td>
                 <td className="py-4 px-6 text-right text-gray-600">{rec.velocity.toFixed(2)}</td>
