@@ -69,6 +69,12 @@ export async function POST(request: NextRequest) {
     
     console.log(`📊 Total products fetched: ${allProducts.length}`);
     
+    // Debug: log sample product to see structure
+    if (allProducts.length > 0) {
+      console.log('📋 Sample product keys:', Object.keys(allProducts[0]));
+      console.log('📋 Sample product:', JSON.stringify(allProducts[0], null, 2));
+    }
+    
     // Build map of style_number -> season from products
     const productSeasons = new Map<string, string>();
     const uniqueSeasons = new Set<string>();
@@ -82,7 +88,8 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log('📋 Available seasons:', Array.from(uniqueSeasons).slice(0, 20));
+    console.log('📋 Seasons from products:', Array.from(uniqueSeasons).slice(0, 20));
+    console.log(`📊 Products with season field: ${productSeasons.size}`);
     
     // Also try to get season from product_attributes for products that don't have it directly
     console.log('🏷️ Also fetching product attributes for missing seasons...');
