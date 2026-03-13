@@ -114,6 +114,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'otb' | 'size-curves' | 'categories' | 'po-generator' | 'trends' | 'bulk-edit' | 'stockouts' | 'whatif' | 'health' | 'seasonal' | 'vendors'>('otb');
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [lastSync, setLastSync] = useState<string | null>(null);
   
   // Load data
   useEffect(() => {
@@ -138,6 +139,17 @@ export default function Dashboard() {
         const settingsMap = new Map<string, ProductSetting>();
         for (const s of settingsData) settingsMap.set(s.sku, s);
         setSettings(settingsMap);
+      }
+      
+      // Fetch last sync time
+      const { data: connectionData } = await supabase
+        .from('apparelmagic_connections')
+        .select('last_sync_at')
+        .eq('workspace_id', currentWorkspace.id)
+        .single();
+      
+      if (connectionData?.last_sync_at) {
+        setLastSync(connectionData.last_sync_at);
       }
       
       setLoading(false);
@@ -410,7 +422,14 @@ export default function Dashboard() {
         <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-8 py-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Live</h1>
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Live</h1>
+                {lastSync && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Last sync: {new Date(lastSync).toLocaleString()}
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2 bg-gray-100 p-1 rounded-xl flex-wrap">
                 {[
                   { id: 'otb', label: 'OTB' },

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
-    const { workspaceId, daysBack = 90, archiveThreshold = 365, targetSeason = 'SS26' } = body;
+    const { workspaceId, daysBack = 90, archiveThreshold = 365 } = body;
     
     if (!workspaceId) {
       return NextResponse.json(
@@ -38,20 +38,23 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get credentials
+    // Get credentials AND target_season
     const serviceSupabase = createServiceClient();
-    const { data: credentials } = await serviceSupabase
+    const { data: connection } = await serviceSupabase
       .from('apparelmagic_connections')
-      .select('subdomain, token')
+      .select('subdomain, token, target_season')
       .eq('workspace_id', workspaceId)
       .single();
     
-    if (!credentials) {
+    if (!connection) {
       return NextResponse.json(
         { error: 'ApparelMagic not connected' },
         { status: 400 }
       );
     }
+    
+    const credentials = { subdomain: connection.subdomain, token: connection.token };
+    const targetSeason = connection.target_season || 'SS26';
     
     const client = new ApparelMagicClient(credentials);
     const results = {
