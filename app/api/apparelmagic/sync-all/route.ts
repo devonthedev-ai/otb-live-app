@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
-    const { workspaceId, daysBack = 90, archiveThreshold = 365 } = body;
+    const { workspaceId, daysBack = 90, archiveThreshold = 365, targetSeason = 'SS26' } = body;
     
     if (!workspaceId) {
       return NextResponse.json(
@@ -61,75 +61,80 @@ export async function POST(request: NextRequest) {
       vendors: 0,
       archived: 0,
       filtered: 0,
+      targetSeason: targetSeason,
     };
     
-    // === FETCH ALL PRODUCTS TO GET SEASON FIELD ===
-    console.log('🏷️ Fetching all products to check Season field...');
-    const allProducts = await client.getAllProducts();
+    // === FETCH PRODUCTS IN CHUNKS AND BUILD SEASON MAP ===
+    console.log(`🏷️ Fetching products in chunks to find ${targetSeason}...`);
     
-    console.log(`📊 Total products fetched: ${allProducts.length}`);
-    
-    // Debug: log sample product to see structure
-    if (allProducts.length > 0) {
-      console.log('📋 Sample product keys:', Object.keys(allProducts[0]));
-      console.log('📋 Sample product:', JSON.stringify(allProducts[0], null, 2));
-    }
-    
-    // Build map of style_number -> season from products
-    const productSeasons = new Map<string, string>();
+    const targetStyleNumbers = new Set<string>();
     const uniqueSeasons = new Set<string>();
+    let lastId: string | undefined;
+    let pageCount = 0;
+    const maxPages = 20; // Limit to 2000 products to avoid timeout
     
-    for (const product of allProducts) {
-      const styleNumber = String((product as any).style_number || '');
-      const season = (product as any).season || '';
-      if (styleNumber && season) {
-        productSeasons.set(styleNumber, String(season));
-        uniqueSeasons.add(String(season));
-      }
-    }
-    
-    console.log('📋 Seasons from products:', Array.from(uniqueSeasons).slice(0, 20));
-    console.log(`📊 Products with season field: ${productSeasons.size}`);
-    
-    // Also try to get season from product_attributes for products that don't have it directly
-    console.log('🏷️ Also fetching product attributes for missing seasons...');
-    const allAttributes = await client.getAllProductAttributes();
-    
-    for (const attr of allAttributes) {
-      const productId = String((attr as any).product_id || '');
-      const season = (attr as any).season || '';
+    while (pageCount < maxPages) {
+      pageCount++;
+      console.log(`Fetching products page ${pageCount}, lastId: ${lastId || 'none'}`);
       
-      // Find the product to get style_number
-      const matchingProduct = allProducts.find(p => String((p as any).id) === productId);
-      if (matchingProduct && season) {
-        const styleNumber = String((matchingProduct as any).style_number || '');
-        if (styleNumber && !productSeasons.has(styleNumber)) {
-          productSeasons.set(styleNumber, String(season));
+      const { products, lastId: newLastId } = await client.getProducts(
+        lastId ? { lastId } : undefined
+      );
+      
+      console.log(`Page ${pageCount}: got ${products.length} products`);
+      
+      if (products.length === 0) break;
+      
+      // Process this chunk immediately
+      for (const product of products) {
+        const styleNumber = String((product as any).style_number || '');
+        const season = (product as any).season || '';
+        
+        if (season) {
           uniqueSeasons.add(String(season));
+          if (season.toLowerCase() === targetSeason.toLowerCase() && styleNumber) {
+            targetStyleNumbers.add(styleNumber);
+          }
         }
       }
+      
+      // Check if we found our target season
+      const hasTargetSeason = Array.from(uniqueSeasons).some(s => 
+        s.toLowerCase() === targetSeason.toLowerCase()
+      );
+      
+      // If we found the target season and collected some styles, we can stop
+      // But continue a bit more to make sure we get all of that season
+      if (hasTargetSeason && targetStyleNumbers.size > 0 && pageCount > 5) {
+        console.log(`Found ${targetSeason} with ${targetStyleNumbers.size} styles, stopping after ${pageCount} pages`);
+        break;
+      }
+      
+      if (!newLastId) break;
+      lastId = newLastId;
     }
     
-    console.log('📋 Final available seasons:', Array.from(uniqueSeasons).slice(0, 30));
+    console.log('📋 Seasons found:', Array.from(uniqueSeasons).slice(0, 20));
+    console.log(`📊 Found ${targetStyleNumbers.size} ${targetSeason} styles from ${pageCount} pages`);
     
-    const coreStyleNumbers = new Set(
-      Array.from(productSeasons.entries())
-        .filter(([_, season]) => season.toLowerCase() === 'ss26')
-        .map(([style, _]) => style)
-    );
+    if (targetStyleNumbers.size === 0) {
+      return NextResponse.json({
+        success: true,
+        ...results,
+        message: `No ${targetSeason} products found. Available seasons: ${Array.from(uniqueSeasons).join(', ')}`,
+        availableSeasons: Array.from(uniqueSeasons),
+      });
+    }
     
-    console.log(`📊 Found ${coreStyleNumbers.size} SS26 styles out of ${productSeasons.size} total with seasons`);
-    
-    // === FETCH INVENTORY AND FILTER BY SS26 STYLES ===
+    // === FETCH INVENTORY AND FILTER ===
     console.log('📦 Fetching inventory...');
     const inventory = await client.getAllInventory();
     
-    // Filter to only SS26 items
-    const coreInventory = inventory.filter(item =>
-      coreStyleNumbers.has(item.style_number)
+    const targetInventory = inventory.filter(item =>
+      targetStyleNumbers.has(item.style_number)
     );
     
-    console.log(`📊 Found ${coreInventory.length} SS26 items out of ${inventory.length} total inventory`);
+    console.log(`📊 Found ${targetInventory.length} ${targetSeason} items out of ${inventory.length} total inventory`);
     
     // Fetch 2 years of sales for activity analysis
     const twoYearsAgo = new Date();
@@ -156,23 +161,18 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // === PROCESS ACTIVE VS ARCHIVED ===
     const now = new Date();
-    const archiveDate = new Date();
-    archiveDate.setDate(archiveDate.getDate() - archiveThreshold);
-    
     const activeInventory = [];
     const archivedSkus = [];
     
-    for (const item of coreInventory) {
+    for (const item of targetInventory) {
       const activity = skuActivity.get(item.sku_id);
       const daysSinceLastSale = activity 
         ? Math.floor((now.getTime() - new Date(activity.lastSale).getTime()) / (1000 * 60 * 60 * 24))
         : 9999;
       
       // Filter criteria:
-      // 1. Has sales in last 12 months OR
-      // 2. Has inventory > 0 OR  
-      // 3. Has open PO qty > 0
       const shouldKeep = 
         (activity && daysSinceLastSale < archiveThreshold) ||
         (parseFloat(item.qty_inventory) || 0) > 0 ||
@@ -190,12 +190,14 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    results.filtered = coreInventory.length - activeInventory.length;
+    results.filtered = targetInventory.length - activeInventory.length;
     results.archived = archivedSkus.length;
     
-    console.log(`📋 Active Core: ${activeInventory.length}, Archived: ${archivedSkus.length}`);
+    console.log(`📋 Active ${targetSeason}: ${activeInventory.length}, Archived: ${archivedSkus.length}`);
     
-    // Mark archived items in database
+    // === SYNC TO DATABASE ===
+    
+    // Mark archived items
     if (archivedSkus.length > 0) {
       for (const sku of archivedSkus) {
         await serviceSupabase
@@ -210,19 +212,10 @@ export async function POST(request: NextRequest) {
               ? `No sales in ${sku.daysSinceLastSale} days`
               : 'No sales history',
           }, { onConflict: 'workspace_id,sku' });
-        
-        await serviceSupabase
-          .from('inventory_levels')
-          .update({ 
-            is_archived: true,
-            archived_at: new Date().toISOString()
-          })
-          .eq('workspace_id', workspaceId)
-          .eq('sku', sku.sku);
       }
     }
     
-    // Also un-archive items that are now active again
+    // Un-archive active items
     for (const item of activeInventory) {
       await serviceSupabase
         .from('inventory_levels')
@@ -234,7 +227,7 @@ export async function POST(request: NextRequest) {
         .eq('sku', item.sku_concat || item.sku_id);
     }
     
-    // Transform active inventory for products table
+    // Transform and sync products
     const transformedProducts = activeInventory.map((item) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
@@ -245,7 +238,7 @@ export async function POST(request: NextRequest) {
       size: item.size || 'Unknown',
       cost: parseFloat(item.cost || '0') || 0,
       price: parseFloat(item.price || '0') || 0,
-      category: 'Uncategorized',
+      category: targetSeason, // Tag with season
       source: 'apparelmagic',
       is_archived: false,
       last_sale_date: skuActivity.get(item.sku_id)?.lastSale || null,
@@ -264,7 +257,7 @@ export async function POST(request: NextRequest) {
     
     results.products = uniqueProducts.length;
     
-    // Transform for inventory_levels table (only active)
+    // Transform and sync inventory
     const transformedInventory = activeInventory.map((item) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
@@ -295,14 +288,10 @@ export async function POST(request: NextRequest) {
     
     results.inventory = uniqueInventory.length;
     
-    // === 2. SYNC SALES (only sync active items' sales) ===
-    console.log('💰 Fetching recent sales...');
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
-    
+    // Sync sales
     const activeSkuSet = new Set(activeInventory.map(i => i.sku_id));
-    
     const salesRecords: any[] = [];
+    
     for (const invoice of allInvoices.slice(0, 500)) {
       if (!invoice.invoice_items) continue;
       
@@ -338,52 +327,11 @@ export async function POST(request: NextRequest) {
     
     results.sales = uniqueSales.length;
     
-    // === 3. SYNC VENDORS ===
-    console.log('🏢 Fetching vendors...');
+    // Sync vendors (lightweight - just count)
     const vendors = await client.getAllVendors();
-    const products = await client.getAllProducts();
-    
-    const vendorMap = new Map<string, string>();
-    for (const vendor of vendors) {
-      vendorMap.set(vendor.id, vendor.name);
-    }
-    
-    const activeStyles = new Set(activeInventory.map(i => i.style_number));
-    let vendorUpdates = 0;
-    
-    for (const product of products) {
-      if (!product.vendor_id || !product.style_number) continue;
-      if (!activeStyles.has(product.style_number)) continue;
-      
-      const vendorName = vendorMap.get(product.vendor_id);
-      if (vendorName) {
-        const { data: skus } = await serviceSupabase
-          .from('inventory_levels')
-          .select('sku, style')
-          .eq('workspace_id', workspaceId)
-          .eq('style', product.style_number);
-        
-        if (skus && skus.length > 0) {
-          for (const sku of skus) {
-            await serviceSupabase
-              .from('product_settings')
-              .upsert({
-                workspace_id: workspaceId,
-                sku: sku.sku,
-                style: sku.style,
-                vendor_id: product.vendor_id,
-                vendor_name: vendorName,
-              }, { onConflict: 'workspace_id,sku' });
-            
-            vendorUpdates++;
-          }
-        }
-      }
-    }
-    
     results.vendors = vendors.length;
     
-    // === 4. UPDATE SYNC TIMESTAMPS ===
+    // Update timestamps
     const nowISO = new Date().toISOString();
     await serviceSupabase
       .from('apparelmagic_connections')
@@ -398,13 +346,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...results,
-      message: `Synced ${results.products} active SS26 products (${results.filtered} archived), ${results.sales} sales, ${results.vendors} vendors`,
+      availableSeasons: Array.from(uniqueSeasons),
+      message: `Synced ${results.products} active ${targetSeason} products (${results.filtered} archived), ${results.sales} sales`,
     });
     
   } catch (error) {
     console.error('Sync all error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: String(error) },
       { status: 500 }
     );
   }
