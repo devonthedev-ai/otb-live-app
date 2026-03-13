@@ -108,17 +108,27 @@ export default function IntegrationsPage() {
     setIsSyncing(true);
 
     try {
-      const response = await fetch('/api/apparelmagic/sync-all', {
+      // Use background sync endpoint - returns immediately
+      const response = await fetch('/api/apparelmagic/sync-background', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id, daysBack: 90 }),
+        body: JSON.stringify({ 
+          secret: 'tb-live-cron-secret-2024',
+          workspaceId: currentWorkspace.id 
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setLastSync(new Date().toISOString());
-        alert(`✅ ${data.message}`);
+        const job = data.jobs?.[0];
+        if (job?.status === 'already_running') {
+          alert('⚠️ Sync already in progress. Check dashboard for status.');
+        } else if (job?.status === 'started') {
+          alert('✅ Sync started! Check dashboard to see progress. Page will refresh when complete.');
+        } else {
+          alert(`✅ ${data.message}`);
+        }
       } else {
         alert(data.error || 'Sync failed');
       }

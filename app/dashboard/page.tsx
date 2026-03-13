@@ -115,6 +115,7 @@ export default function Dashboard() {
   const [selectedVendor, setSelectedVendor] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{status: string; progress: number; message: string} | null>(null);
   
   // Load data
   useEffect(() => {
@@ -157,6 +158,49 @@ export default function Dashboard() {
     
     loadData();
   }, [currentWorkspace, supabase]);
+  
+  // Poll for sync status
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    
+    const checkSyncStatus = async () => {
+      try {
+        const response = await fetch(`/api/apparelmagic/sync-background?workspaceId=${currentWorkspace.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.jobs && data.jobs.length > 0) {
+            const latestJob = data.jobs[0];
+            setSyncStatus({
+              status: latestJob.status,
+              progress: latestJob.progress || 0,
+              message: latestJob.message || '',
+            });
+            
+            // If sync just completed, refresh data
+            if (latestJob.status === 'completed' && lastSync !== latestJob.completed_at) {
+              setLastSync(latestJob.completed_at);
+              // Trigger data reload
+              window.location.reload();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking sync status:', error);
+      }
+    };
+    
+    // Check immediately
+    checkSyncStatus();
+    
+    // Poll every 10 seconds if sync is running
+    const interval = setInterval(() => {
+      if (syncStatus?.status === 'running' || syncStatus?.status === 'pending') {
+        checkSyncStatus();
+      }
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [currentWorkspace, syncStatus?.status, lastSync]);
 
   // Filter inventory based on archived status
   const activeInventory = useMemo(() => {
@@ -424,11 +468,22 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">OTB Live</h1>
-                {lastSync && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Last sync: {new Date(lastSync).toLocaleString()}
-                  </p>
-                )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  {lastSync && (
+                    <p className="text-xs text-gray-500">
+                      Last sync: {new Date(lastSync).toLocaleString()}
+                    </p>
+                  )}
+                  {syncStatus && (syncStatus.status === 'running' || syncStatus.status === 'pending') && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                      <span>{syncStatus.message} ({syncStatus.progress}%)</span>
+                    </div>
+                  )}
+                  {syncStatus?.status === 'failed' && (
+                    <span className="text-xs text-red-600">Sync failed</span>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 bg-gray-100 p-1 rounded-xl flex-wrap">
                 {[
