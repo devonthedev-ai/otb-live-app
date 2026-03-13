@@ -9,16 +9,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { secret, workspaceId } = body;
     
-    const expectedSecret = process.env.CRON_SECRET;
+    // Support both old and new secret for backward compatibility
+    const validSecrets = [
+      process.env.CRON_SECRET,
+      'tb-live-cron-secret-2024',
+      'otb-live-cron-secret-2024'
+    ].filter(Boolean);
     
-    if (!expectedSecret) {
-      return NextResponse.json(
-        { error: 'CRON_SECRET not configured' },
-        { status: 500 }
-      );
-    }
-    
-    if (secret !== expectedSecret) {
+    if (!validSecrets.includes(secret)) {
       return NextResponse.json(
         { error: 'Invalid secret' },
         { status: 401 }
