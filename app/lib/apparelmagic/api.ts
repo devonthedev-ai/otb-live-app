@@ -130,20 +130,22 @@ export class ApparelMagicClient {
     let lastId: string | undefined;
     let pageCount = 0;
     
-    console.log(`[ApparelMagic] Starting pagination, maxPages: ${maxPages}`);
+    console.log(`[ApparelMagic] Using POST pagination v2, maxPages: ${maxPages}`);
     
     try {
       while (pageCount < maxPages) {
         pageCount++;
         
-        console.log(`[ApparelMagic] Fetching page ${pageCount}, lastId: ${lastId || 'none'}`);
+        console.log(`[ApparelMagic] POST page ${pageCount}, lastId: ${lastId || 'none'}`);
         
-        // Try POST method for better pagination support
-        const { products, lastId: newLastId } = await this.getProductsPOST(
+        // Use POST method for pagination - more reliable
+        const result = await this.getProductsPOST(
           lastId ? { lastId } : undefined
         );
         
-        console.log(`[ApparelMagic] Page ${pageCount}: got ${products.length} products, newLastId: ${newLastId || 'null'}`);
+        const { products, lastId: newLastId } = result;
+        
+        console.log(`[ApparelMagic] POST page ${pageCount}: got ${products.length} products, lastId: ${newLastId || 'null'}`);
         
         if (products.length === 0) {
           console.log(`[ApparelMagic] Empty page, stopping`);
@@ -168,10 +170,10 @@ export class ApparelMagicClient {
         lastId = newLastId;
       }
     } catch (error) {
-      console.error('[ApparelMagic] Error during pagination:', error);
+      console.error('[ApparelMagic] Error during POST pagination:', error);
     }
     
-    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
+    console.log(`[ApparelMagic] POST pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
   }
   
