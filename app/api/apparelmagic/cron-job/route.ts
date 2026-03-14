@@ -2,7 +2,6 @@ import { createServiceClient } from '@/app/lib/supabase/service';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Vercel Cron Job - runs daily at 6 AM ET
-// Also handles GET status requests
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const workspaceId = searchParams.get('workspaceId');
@@ -109,48 +108,14 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   const jobId = job?.id;
   
   try {
-    // STEP 1: Try to fetch from both inventory and styles endpoints
-    await updateJobProgress(serviceSupabase, jobId, 'Fetching products...', 10);
+    // STEP 1: Fetch inventory (API limited to 100 items)
+    await updateJobProgress(serviceSupabase, jobId, 'Fetching inventory...', 10);
     
     console.log(`[Vercel Cron] Fetching inventory...`);
     const inventory = await client.getAllInventory();
     console.log(`[Vercel Cron] Inventory: ${inventory.length} items`);
     
-    console.log(`[Vercel Cron] Fetching styles...`);
-    const styles = await client.getAllStyles();
-    console.log(`[Vercel Cron] Styles: ${styles.length} items`);
-    
-    // Use whichever has more data
-    let allItems = inventory;
-    if (styles.length > inventory.length) {
-      console.log(`[Vercel Cron] Using styles (${styles.length}) instead of inventory (${inventory.length})`);
-      // Convert styles format to match inventory format
-      allItems = styles.map((s: any) => ({
-        sku_id: String(s.id),
-        product_id: String(s.product_id || s.id),
-        style_number: String(s.style_number || s.style),
-        attr_2: String(s.color || ''),
-        size: String(s.size || ''),
-        sku_concat: String(s.sku || s.id),
-        cost: String(s.cost || 0),
-        price: String(s.price || 0),
-        season: String(s.season || 'ALL'),
-        qty_inventory: 0,
-        qty_avail_sell: 0,
-        qty_alloc: 0,
-        qty_picked: 0,
-        qty_open_po: 0,
-        upc_display: String(s.upc || ''),
-        weight: String(s.weight || 0),
-      }) as any);
-    }
-    
-    // STEP 2: All items are synced (no season filter!)
-    await updateJobProgress(serviceSupabase, jobId, 'Processing items...', 40);
-    
-    console.log(`[Vercel Cron] Processing all ${allItems.length} items`);
-    
-    if (allItems.length === 0) {
+    if (inventory.length === 0) {
       await serviceSupabase
         .from('sync_jobs')
         .update({
@@ -165,9 +130,13 @@ async function syncWorkspace(workspaceId: string, connection: any) {
         workspaceId,
         success: false,
         error: 'No products found',
-        totalItems: 0,
       };
     }
+    
+    // STEP 2: Process inventory
+    await updateJobProgress(serviceSupabase, jobId, 'Processing inventory...', 40);
+    
+    console.log(`[Vercel Cron] Processing ${inventory.length} inventory items`);
     
     // STEP 3: Fetch sales
     await updateJobProgress(serviceSupabase, jobId, 'Fetching sales history...', 60);
@@ -199,13 +168,13 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     await updateJobProgress(serviceSupabase, jobId, 'Saving to database...', 80);
     
     // Save products
-    const transformedProducts = allItems.map((item: any) => ({
+    const transformedProducts = inventory.map((item: any) => ({
       workspace_id: workspaceId,
-      external_id: item.sku_id || item.id,
-      name: `${item.style_number} ${item.attr_2 || item.color || ''} ${item.size || ''}`.trim(),
-      sku: item.sku_concat || item.sku || item.id,
+      external_id: item.sku_id,
+      name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
+      sku: item.sku_concat || item.sku_id,
       style: item.style_number,
-      color: item.attr_2 || item.color || 'Unknown',
+      color: item.attr_2 || 'Unknown',
       size: item.size || 'Unknown',
       cost: parseFloat(item.cost || '0') || 0,
       price: parseFloat(item.price || '0') || 0,
@@ -227,19 +196,19 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       .upsert(uniqueProducts, { onConflict: 'workspace_id,sku' });
     
     // Save inventory
-    const transformedInventory = allItems.map((item: any) => ({
+    const transformedInventory = inventory.map((item: any) => ({
       workspace_id: workspaceId,
-      external_id: item.sku_id || item.id,
-      sku: item.sku_concat || item.sku || item.id,
+      external_id: item.sku_id,
+      sku: item.sku_concat || item.sku_id,
       style: item.style_number,
-      color: item.attr_2 || item.color || 'Unknown',
+      color: item.attr_2 || 'Unknown',
       size: item.size || 'Unknown',
-      qty_on_hand: parseFloat(item.qty_inventory || '0') || 0,
-      qty_available: parseFloat(item.qty_avail_sell || '0') || 0,
-      qty_allocated: parseFloat(item.qty_alloc || '0') || 0,
-      qty_reserved: parseFloat(item.qty_picked || '0') || 0,
+      qty_on_hand: parseFloat(item.qty_inventory) || 0,
+      qty_available: parseFloat(item.qty_avail_sell) || 0,
+      qty_allocated: parseFloat(item.qty_alloc) || 0,
+      qty_reserved: parseFloat(item.qty_picked) || 0,
       qty_open_po: parseFloat(item.qty_open_po || '0') || 0,
-      upc: item.upc_display || item.upc || '',
+      upc: item.upc_display || item.upc_11 || '',
       cost: parseFloat(item.cost || '0') || 0,
       price: parseFloat(item.price || '0') || 0,
       weight: parseFloat(item.weight || '0') || 0,
@@ -256,7 +225,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       .upsert(uniqueInventory, { onConflict: 'workspace_id,sku' });
     
     // Save sales
-    const activeSkuSet = new Set(allItems.map((i: any) => i.sku_id || i.id));
+    const activeSkuSet = new Set(inventory.map((i: any) => i.sku_id));
     const salesRecords: any[] = [];
     
     for (const invoice of allInvoices) {
