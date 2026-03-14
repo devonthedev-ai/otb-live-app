@@ -138,7 +138,8 @@ export class ApparelMagicClient {
         
         console.log(`[ApparelMagic] Fetching page ${pageCount}, lastId: ${lastId || 'none'}`);
         
-        const { products, lastId: newLastId } = await this.getProducts(
+        // Try POST method for better pagination support
+        const { products, lastId: newLastId } = await this.getProductsPOST(
           lastId ? { lastId } : undefined
         );
         
@@ -172,6 +173,42 @@ export class ApparelMagicClient {
     
     console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
+  }
+  
+  // Get products using POST (better pagination)
+  async getProductsPOST(pagination?: PaginationParams): Promise<{
+    products: ApparelMagicProduct[];
+    lastId: string | null;
+  }> {
+    const authParams = this.getAuthParams();
+    
+    const body: any = {
+      ...authParams,
+    };
+    
+    if (pagination?.lastId) {
+      body.pagination = { last_id: pagination.lastId };
+    }
+    
+    const response = await fetch(`${this.baseUrl}/products`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'OTB-Live/1.0'
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Products API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    return {
+      products: data.response || [],
+      lastId: data.meta?.pagination?.last_id || null,
+    };
   }
 
   // Get inventory/stock
