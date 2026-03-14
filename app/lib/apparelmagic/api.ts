@@ -295,18 +295,41 @@ export class ApparelMagicClient {
   async getAllInventory(): Promise<ApparelMagicInventory[]> {
     const allInventory: ApparelMagicInventory[] = [];
     let lastId: string | undefined;
+    let pageCount = 0;
     
-    while (true) {
+    console.log('[ApparelMagic] Starting inventory pagination...');
+    
+    while (pageCount < 50) {
+      pageCount++;
+      console.log(`[ApparelMagic] Inventory page ${pageCount}, lastId: ${lastId || 'none'}`);
+      
       const { inventory, lastId: newLastId } = await this.getInventory(
         lastId ? { lastId } : undefined
       );
       
+      console.log(`[ApparelMagic] Inventory page ${pageCount}: got ${inventory.length} items, newLastId: ${newLastId || 'null'}`);
+      
+      if (inventory.length === 0) {
+        console.log('[ApparelMagic] Empty inventory page, stopping');
+        break;
+      }
+      
       allInventory.push(...inventory);
       
-      if (!newLastId) break;
+      if (!newLastId) {
+        console.log('[ApparelMagic] No lastId for inventory, stopping');
+        break;
+      }
+      
+      if (newLastId === lastId) {
+        console.log(`[ApparelMagic] Inventory lastId unchanged (${newLastId}), stopping`);
+        break;
+      }
+      
       lastId = newLastId;
     }
     
+    console.log(`[ApparelMagic] Inventory pagination complete. Total: ${allInventory.length} items from ${pageCount} pages`);
     return allInventory;
   }
 
