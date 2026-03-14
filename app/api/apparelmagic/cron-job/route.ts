@@ -99,12 +99,31 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   const jobId = job?.id;
   
   try {
-    // STEP 1: Fetch ALL products (no limit!)
+    // STEP 1: Fetch ALL products (try products endpoint first, then styles)
     await updateJobProgress(jobId, 'Fetching all products...', 10);
     
     console.log(`[Vercel Cron] Starting to fetch all products...`);
-    const allProducts = await client.getAllProducts();
-    console.log(`[Vercel Cron] Fetched ${allProducts.length} total products`);
+    let allProducts = await client.getAllProducts();
+    console.log(`[Vercel Cron] Products endpoint returned: ${allProducts.length}`);
+    
+    // If products endpoint returned few items, try styles endpoint
+    if (allProducts.length <= 100) {
+      console.log(`[Vercel Cron] Trying styles endpoint...`);
+      const styles = await client.getAllStyles();
+      console.log(`[Vercel Cron] Styles endpoint returned: ${styles.length}`);
+      
+      if (styles.length > allProducts.length) {
+        console.log(`[Vercel Cron] Using styles instead of products`);
+        // Convert styles to product format
+        allProducts = styles.map((style: any) => ({
+          ...style,
+          style_number: style.style_number || style.style,
+          season: style.season || 'ALL',
+        }));
+      }
+    }
+    
+    console.log(`[Vercel Cron] Fetched ${allProducts.length} total items`);
     
     // Debug: Check first few products for season field
     if (allProducts.length > 0) {
@@ -112,7 +131,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
         style: p.style_number, 
         season: p.season 
       }));
-      console.log(`[Vercel Cron] Sample products:`, sampleSeasons);
+      console.log(`[Vercel Cron] Sample items:`, sampleSeasons);
     }
     
     // STEP 2: Find target season styles

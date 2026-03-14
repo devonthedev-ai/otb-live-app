@@ -116,6 +116,51 @@ export class ApparelMagicClient {
     };
   }
 
+  // Get styles (might have more products)
+  async getStyles(pagination?: PaginationParams): Promise<{
+    styles: any[];
+    lastId: string | null;
+  }> {
+    const response = await this.request<any>(
+      'products.styles',
+      'GET',
+      undefined,
+      pagination
+    );
+    
+    return {
+      styles: response.response || [],
+      lastId: response.meta?.pagination?.last_id || null,
+    };
+  }
+
+  // Get all styles
+  async getAllStyles(): Promise<any[]> {
+    const allStyles: any[] = [];
+    let lastId: string | undefined;
+    let pageCount = 0;
+    
+    console.log('[ApparelMagic] Fetching all styles...');
+    
+    while (pageCount < 50) {
+      pageCount++;
+      const { styles, lastId: newLastId } = await this.getStyles(
+        lastId ? { lastId } : undefined
+      );
+      
+      console.log(`[ApparelMagic] Styles page ${pageCount}: got ${styles.length} styles`);
+      
+      if (styles.length === 0) break;
+      allStyles.push(...styles);
+      
+      if (!newLastId) break;
+      lastId = newLastId;
+    }
+    
+    console.log(`[ApparelMagic] Total styles fetched: ${allStyles.length}`);
+    return allStyles;
+  }
+
   // Get all products (handles pagination)
   async getAllProducts(): Promise<ApparelMagicProduct[]> {
     return this.getAllProductsChunked();
@@ -130,22 +175,26 @@ export class ApparelMagicClient {
     let lastId: string | undefined;
     let pageCount = 0;
     
-    console.log(`[ApparelMagic] Using POST pagination v2, maxPages: ${maxPages}`);
+    console.log(`[ApparelMagic] GET pagination v3, maxPages: ${maxPages}`);
     
     try {
       while (pageCount < maxPages) {
         pageCount++;
         
-        console.log(`[ApparelMagic] POST page ${pageCount}, lastId: ${lastId || 'none'}`);
+        console.log(`[ApparelMagic] GET page ${pageCount}, lastId: ${lastId || 'none'}`);
         
-        // Use POST method for pagination - more reliable
-        const result = await this.getProductsPOST(
+        const result = await this.getProducts(
           lastId ? { lastId } : undefined
         );
         
         const { products, lastId: newLastId } = result;
         
-        console.log(`[ApparelMagic] POST page ${pageCount}: got ${products.length} products, lastId: ${newLastId || 'null'}`);
+        console.log(`[ApparelMagic] GET page ${pageCount}: got ${products.length} products`);
+        
+        // Debug: log the raw response for first page
+        if (pageCount === 1) {
+          console.log(`[ApparelMagic] First page meta:`, JSON.stringify(result));
+        }
         
         if (products.length === 0) {
           console.log(`[ApparelMagic] Empty page, stopping`);
@@ -154,26 +203,32 @@ export class ApparelMagicClient {
         
         allProducts.push(...products);
         
-        // Call callback if provided - return false to stop early
         if (onChunk) {
           const shouldContinue = await onChunk(products, pageCount);
           if (shouldContinue === false) {
-            console.log(`[ApparelMagic] Callback returned false, stopping early`);
             break;
           }
         }
         
         if (!newLastId) {
-          console.log(`[ApparelMagic] No lastId returned, stopping`);
+          console.log(`[ApparelMagic] No lastId in response, stopping`);
           break;
         }
+        
+        // Debug: check if lastId is actually incrementing
+        if (newLastId === lastId) {
+          console.log(`[ApparelMagic] lastId didn't change (${newLastId}), stopping to prevent infinite loop`);
+          break;
+        }
+        
         lastId = newLastId;
+        console.log(`[ApparelMagic] Next lastId: ${lastId}`);
       }
     } catch (error) {
-      console.error('[ApparelMagic] Error during POST pagination:', error);
+      console.error('[ApparelMagic] Error during pagination:', error);
     }
     
-    console.log(`[ApparelMagic] POST pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
+    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
   }
   
