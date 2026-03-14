@@ -130,15 +130,24 @@ export class ApparelMagicClient {
     let lastId: string | undefined;
     let pageCount = 0;
     
+    console.log(`[ApparelMagic] Starting pagination, maxPages: ${maxPages}`);
+    
     try {
       while (pageCount < maxPages) {
         pageCount++;
+        
+        console.log(`[ApparelMagic] Fetching page ${pageCount}, lastId: ${lastId || 'none'}`);
         
         const { products, lastId: newLastId } = await this.getProducts(
           lastId ? { lastId } : undefined
         );
         
-        if (products.length === 0) break;
+        console.log(`[ApparelMagic] Page ${pageCount}: got ${products.length} products, newLastId: ${newLastId || 'null'}`);
+        
+        if (products.length === 0) {
+          console.log(`[ApparelMagic] Empty page, stopping`);
+          break;
+        }
         
         allProducts.push(...products);
         
@@ -146,17 +155,22 @@ export class ApparelMagicClient {
         if (onChunk) {
           const shouldContinue = await onChunk(products, pageCount);
           if (shouldContinue === false) {
+            console.log(`[ApparelMagic] Callback returned false, stopping early`);
             break;
           }
         }
         
-        if (!newLastId) break;
+        if (!newLastId) {
+          console.log(`[ApparelMagic] No lastId returned, stopping`);
+          break;
+        }
         lastId = newLastId;
       }
     } catch (error) {
-      console.error('Error during chunked pagination:', error);
+      console.error('[ApparelMagic] Error during pagination:', error);
     }
     
+    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
   }
 
