@@ -292,44 +292,50 @@ export class ApparelMagicClient {
   }
 
   // Get all inventory (handles pagination)
+  // Get all inventory with rate limiting protection
   async getAllInventory(): Promise<ApparelMagicInventory[]> {
     const allInventory: ApparelMagicInventory[] = [];
     let lastId: string | undefined;
     let pageCount = 0;
+    const maxPages = 1; // Only fetch first page (100 items) due to API limit
     
-    console.log('[ApparelMagic] Starting inventory pagination...');
+    console.log('[ApparelMagic] Starting inventory fetch (max 100 items due to API limits)...');
     
-    while (pageCount < 50) {
+    while (pageCount < maxPages) {
       pageCount++;
-      console.log(`[ApparelMagic] Inventory page ${pageCount}, lastId: ${lastId || 'none'}`);
       
-      const { inventory, lastId: newLastId } = await this.getInventory(
-        lastId ? { lastId } : undefined
-      );
-      
-      console.log(`[ApparelMagic] Inventory page ${pageCount}: got ${inventory.length} items, newLastId: ${newLastId || 'null'}`);
-      
-      if (inventory.length === 0) {
-        console.log('[ApparelMagic] Empty inventory page, stopping');
-        break;
+      try {
+        const { inventory, lastId: newLastId } = await this.getInventory(
+          lastId ? { lastId } : undefined
+        );
+        
+        console.log(`[ApparelMagic] Inventory page ${pageCount}: got ${inventory.length} items`);
+        
+        if (inventory.length === 0) break;
+        
+        allInventory.push(...inventory);
+        
+        // API limit - only 100 items available
+        if (inventory.length < 100) break;
+        
+        if (!newLastId) break;
+        lastId = newLastId;
+        
+        // Rate limiting: max 4 requests per second
+        await new Promise(r => setTimeout(r, 250));
+        
+      } catch (error: any) {
+        if (error.message?.includes('429')) {
+          console.log('[ApparelMagic] Rate limited (429), waiting 1 second...');
+          await new Promise(r => setTimeout(r, 1000));
+          pageCount--; // Retry this page
+          continue;
+        }
+        throw error;
       }
-      
-      allInventory.push(...inventory);
-      
-      if (!newLastId) {
-        console.log('[ApparelMagic] No lastId for inventory, stopping');
-        break;
-      }
-      
-      if (newLastId === lastId) {
-        console.log(`[ApparelMagic] Inventory lastId unchanged (${newLastId}), stopping`);
-        break;
-      }
-      
-      lastId = newLastId;
     }
     
-    console.log(`[ApparelMagic] Inventory pagination complete. Total: ${allInventory.length} items from ${pageCount} pages`);
+    console.log(`[ApparelMagic] Inventory fetch complete. Total: ${allInventory.length} items (API limit: 100)`);
     return allInventory;
   }
 
