@@ -88,7 +88,20 @@ export async function POST(request: NextRequest) {
         
         // Trigger the actual sync (fire and forget)
         // This runs in the background, doesn't block the response
-        triggerBackgroundSync(job.id, wsId).catch(console.error);
+        triggerBackgroundSync(job.id, wsId).catch(async (error) => {
+          console.error(`Background sync failed for job ${job.id}:`, error);
+          // Update job status to failed so user can see the error
+          await serviceSupabase
+            .from('sync_jobs')
+            .update({
+              status: 'failed',
+              completed_at: new Date().toISOString(),
+              message: 'Sync failed - check logs',
+              error: String(error),
+              progress: 100,
+            })
+            .eq('id', job.id);
+        });
       }
     }
     
@@ -109,6 +122,8 @@ export async function POST(request: NextRequest) {
 
 // Trigger the actual sync in the background
 async function triggerBackgroundSync(jobId: string, workspaceId: string) {
+  console.log(`[Sync Job ${jobId}] Starting background sync for workspace ${workspaceId}`);
+  
   try {
     const serviceSupabase = createServiceClient();
     
@@ -123,37 +138,46 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
       })
       .eq('id', jobId);
     
-    // Call the actual sync endpoint
-    const { ApparelMagicClient } = await import('@/app/lib/apparelmagic/api');
+    console.log(`[Sync Job ${jobId}] Getting ApparelMagic credentials...`);
     
     // Get credentials
-    const { data: connection } = await serviceSupabase
+    const { data: connection, error: connError } = await serviceSupabase
       .from('apparelmagic_connections')
       .select('subdomain, token, target_season')
       .eq('workspace_id', workspaceId)
       .single();
     
-    if (!connection) {
-      throw new Error('No ApparelMagic connection found');
+    if (connError) {
+      throw new Error(`Failed to get connection: ${connError.message}`);
     }
+    
+    if (!connection) {
+      throw new Error('No ApparelMagic connection found for this workspace');
+    }
+    
+    console.log(`[Sync Job ${jobId}] Got credentials for subdomain: ${connection.subdomain}`);
     
     const credentials = { subdomain: connection.subdomain, token: connection.token };
     const targetSeason = connection.target_season || 'SS26';
     
+    console.log(`[Sync Job ${jobId}] Initializing ApparelMagic client...`);
+    const { ApparelMagicClient } = await import('@/app/lib/apparelmagic/api');
     const client = new ApparelMagicClient(credentials);
     
     // Step 1: Fetch all products
+    console.log(`[Sync Job ${jobId}] Fetching all products...`);
     await serviceSupabase
       .from('sync_jobs')
       .update({ message: 'Fetching products...', progress: 20 })
       .eq('id', jobId);
     
     const allProducts = await client.getAllProducts();
+    console.log(`[Sync Job ${jobId}] Fetched ${allProducts.length} products`);
     
     // Step 2: Find target season styles
     await serviceSupabase
       .from('sync_jobs')
-      .update({ message: 'Finding target season...', progress: 40 })
+      .update({ message: `Finding ${targetSeason} styles...`, progress: 40 })
       .eq('id', jobId);
     
     const productSeasons = new Map<string, string>();
@@ -170,6 +194,8 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
         .filter(([_, season]) => season.toLowerCase() === targetSeason.toLowerCase())
         .map(([style, _]) => style)
     );
+    
+    console.log(`[Sync Job ${jobId}] Found ${targetStyles.size} ${targetSeason} styles`);
     
     if (targetStyles.size === 0) {
       const availableSeasons = Array.from(new Set(productSeasons.values()));
@@ -189,6 +215,7 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
     }
     
     // Step 3: Fetch inventory
+    console.log(`[Sync Job ${jobId}] Fetching inventory...`);
     await serviceSupabase
       .from('sync_jobs')
       .update({ message: 'Fetching inventory...', progress: 60 })
@@ -199,7 +226,10 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
       targetStyles.has(item.style_number)
     );
     
+    console.log(`[Sync Job ${jobId}] Found ${targetInventory.length} inventory items for target season`);
+    
     // Step 4: Fetch sales
+    console.log(`[Sync Job ${jobId}] Fetching sales...`);
     await serviceSupabase
       .from('sync_jobs')
       .update({ message: 'Fetching sales history...', progress: 70 })
@@ -208,6 +238,8 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
     const twoYearsAgo = new Date();
     twoYearsAgo.setDate(twoYearsAgo.getDate() - 730);
     const allInvoices = await client.getAllInvoices(twoYearsAgo.toISOString().split('T')[0]);
+    
+    console.log(`[Sync Job ${jobId}] Fetched ${allInvoices.length} invoices`);
     
     // Build activity map
     const skuActivity = new Map<string, { lastSale: string; totalUnits: number }>();
@@ -227,6 +259,7 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
     }
     
     // Step 5: Sync to database
+    console.log(`[Sync Job ${jobId}] Syncing to database...`);
     await serviceSupabase
       .from('sync_jobs')
       .update({ message: 'Syncing to database...', progress: 80 })
@@ -348,10 +381,10 @@ async function triggerBackgroundSync(jobId: string, workspaceId: string) {
       })
       .eq('id', jobId);
     
-    console.log(`✅ Sync job ${jobId} completed for workspace ${workspaceId}`);
+    console.log(`[Sync Job ${jobId}] ✅ Completed successfully`);
     
   } catch (error) {
-    console.error(`❌ Sync job ${jobId} failed:`, error);
+    console.error(`[Sync Job ${jobId}] ❌ Failed:`, error);
     
     const serviceSupabase = createServiceClient();
     await serviceSupabase
