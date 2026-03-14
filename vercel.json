@@ -4,5 +4,11 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/apparelmagic/cron-job",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

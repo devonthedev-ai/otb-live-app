@@ -108,18 +108,27 @@ export default function IntegrationsPage() {
     setIsSyncing(true);
 
     try {
-      // Use simple sync with limits to stay within Vercel timeout
-      const response = await fetch('/api/apparelmagic/sync-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
+      // Call the Vercel cron endpoint directly (it has no timeout limit)
+      const response = await fetch('/api/apparelmagic/cron-job', {
+        method: 'GET',
       });
 
       const data = await response.json();
 
-      if (response.ok && data.success) {
-        setLastSync(new Date().toISOString());
-        alert(`✅ Sync complete! ${data.results?.productsSynced || 0} products synced`);
+      if (response.ok) {
+        // Find result for current workspace
+        const workspaceResult = data.results?.find(
+          (r: any) => r.workspaceId === currentWorkspace.id
+        );
+        
+        if (workspaceResult?.success) {
+          setLastSync(new Date().toISOString());
+          alert(`✅ Sync complete! ${workspaceResult.productsSynced} products synced`);
+        } else if (workspaceResult?.error) {
+          alert(`❌ ${workspaceResult.error}`);
+        } else {
+          alert(`✅ ${data.message}`);
+        }
       } else {
         alert(data.error || 'Sync failed');
       }
