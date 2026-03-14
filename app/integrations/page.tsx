@@ -108,32 +108,51 @@ export default function IntegrationsPage() {
     setIsSyncing(true);
 
     try {
-      // Use background sync endpoint - returns immediately
-      const response = await fetch('/api/apparelmagic/sync-background', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          secret: 'tb-live-cron-secret-2024',
-          workspaceId: currentWorkspace.id 
-        }),
-      });
+      // Use chunked sync that works within Vercel timeout
+      let complete = false;
+      let syncId: string | null = null;
+      let attempts = 0;
+      const maxAttempts = 50;
+      
+      while (!complete && attempts < maxAttempts) {
+        attempts++;
+        
+        const res: Response = await fetch('/api/apparelmagic/sync-chunked', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            secret: 'tb-live-cron-secret-2024',
+            workspaceId: currentWorkspace.id,
+            syncId,
+            resume: !!syncId
+          }),
+        });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        const job = data.jobs?.[0];
-        if (job?.status === 'already_running') {
-          alert('⚠️ Sync already in progress. Check dashboard for status.');
-        } else if (job?.status === 'started') {
-          alert('✅ Sync started! Check dashboard to see progress. Page will refresh when complete.');
-        } else {
-          alert(`✅ ${data.message}`);
+        const data: any = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.error || 'Sync failed');
         }
-      } else {
-        alert(data.error || 'Sync failed');
+        
+        if (data.complete) {
+          complete = true;
+          if (data.success) {
+            setLastSync(new Date().toISOString());
+            alert(`✅ Sync complete! ${data.results?.productsSynced || 0} products synced`);
+          } else {
+            alert(`❌ ${data.error || 'Sync failed'}`);
+          }
+        } else {
+          syncId = data.syncId;
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      
+      if (attempts >= maxAttempts) {
+        alert('Sync taking too long. Please check dashboard for status.');
       }
     } catch (error) {
-      alert('Sync failed. Please try again.');
+      alert('Sync failed: ' + String(error));
     } finally {
       setIsSyncing(false);
     }
