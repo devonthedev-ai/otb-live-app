@@ -317,3 +317,4 @@ async function updateJobProgress(serviceSupabase: any, jobId: string | undefined
     .update({ message, progress })
     .eq('id', jobId);
 }
+// Sync fixed
