@@ -2,21 +2,39 @@ import { createServiceClient } from '@/app/lib/supabase/service';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Vercel Cron Job - runs daily at 6 AM ET
-// This runs WITHOUT timeout limits - can process thousands of products
+// Also handles GET status requests
 export async function GET(request: NextRequest) {
-  // Verify this is being called by Vercel Cron (optional security check)
-  const authHeader = request.headers.get('authorization');
+  const { searchParams } = new URL(request.url);
+  const workspaceId = searchParams.get('workspaceId');
   
-  // Vercel Cron adds this header automatically
-  // For extra security, you could also check a secret
+  // If workspaceId provided, return status
+  if (workspaceId) {
+    try {
+      const serviceSupabase = createServiceClient();
+      
+      const { data: jobs } = await serviceSupabase
+        .from('sync_jobs')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      return NextResponse.json({
+        success: true,
+        jobs: jobs || [],
+      });
+    } catch (error) {
+      return NextResponse.json({ error: String(error) }, { status: 500 });
+    }
+  }
   
+  // Otherwise run the cron job
   console.log('[Vercel Cron] Starting daily ApparelMagic sync...');
   
   const serviceSupabase = createServiceClient();
   const results: any[] = [];
   
   try {
-    // Find all workspaces with ApparelMagic connections
     const { data: connections, error: connError } = await serviceSupabase
       .from('apparelmagic_connections')
       .select('workspace_id, subdomain, token, target_season');
@@ -32,16 +50,12 @@ export async function GET(request: NextRequest) {
     
     console.log(`[Vercel Cron] Found ${connections.length} workspace(s) to sync`);
     
-    // Process each workspace
     for (const conn of connections) {
       try {
         console.log(`[Vercel Cron] Syncing workspace ${conn.workspace_id}...`);
-        
         const result = await syncWorkspace(conn.workspace_id, conn);
         results.push(result);
-        
         console.log(`[Vercel Cron] Workspace ${conn.workspace_id} synced:`, result);
-        
       } catch (error) {
         console.error(`[Vercel Cron] Failed to sync workspace ${conn.workspace_id}:`, error);
         results.push({
@@ -53,7 +67,6 @@ export async function GET(request: NextRequest) {
     }
     
     const successCount = results.filter(r => r.success).length;
-    
     console.log(`[Vercel Cron] Completed. ${successCount}/${connections.length} workspaces synced successfully`);
     
     return NextResponse.json({
@@ -80,9 +93,6 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     token: connection.token,
   });
   
-  const targetSeason = connection.target_season || 'SS26';
-  
-  // Create job record
   const { data: job } = await serviceSupabase
     .from('sync_jobs')
     .insert({
@@ -99,74 +109,25 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   const jobId = job?.id;
   
   try {
-    // STEP 1: Fetch ALL products using INVENTORY endpoint (not products!)
-    await updateJobProgress(jobId, 'Fetching all products...', 10);
+    // STEP 1: Fetch ALL inventory
+    await updateJobProgress(serviceSupabase, jobId, 'Fetching all inventory...', 10);
     
     console.log(`[Vercel Cron] Fetching all inventory...`);
     const inventory = await client.getAllInventory();
     console.log(`[Vercel Cron] Fetched ${inventory.length} inventory items`);
     
-    // Extract unique products from inventory
-    const productMap = new Map();
-    for (const item of inventory) {
-      const styleNumber = item.style_number;
-      if (!productMap.has(styleNumber)) {
-        productMap.set(styleNumber, {
-          style_number: styleNumber,
-          season: item.season || 'ALL', // inventory might have season
-          id: item.product_id || item.id,
-        });
-      }
-    }
+    // STEP 2: All inventory is synced (no season filter!)
+    await updateJobProgress(serviceSupabase, jobId, 'Processing inventory...', 40);
     
-    const allProducts = Array.from(productMap.values());
-    console.log(`[Vercel Cron] Extracted ${allProducts.length} unique styles from inventory`);
+    console.log(`[Vercel Cron] Processing all ${inventory.length} inventory items`);
     
-    // Debug: Check seasons
-    if (allProducts.length > 0) {
-      const sampleSeasons = allProducts.slice(0, 10).map((p: any) => ({ 
-        style: p.style_number, 
-        season: p.season 
-      }));
-      console.log(`[Vercel Cron] Sample seasons:`, sampleSeasons);
-      
-      // Count seasons
-      const seasonCounts = new Map();
-      for (const p of allProducts) {
-        const s = p.season || 'UNKNOWN';
-        seasonCounts.set(s, (seasonCounts.get(s) || 0) + 1);
-      }
-      console.log(`[Vercel Cron] Season counts:`, Array.from(seasonCounts.entries()));
-    }
-    
-    // STEP 2: Find target season styles
-    await updateJobProgress(jobId, 'Finding target season...', 20);
-    
-    const productSeasons = new Map<string, string>();
-    for (const product of allProducts) {
-      const styleNumber = String((product as any).style_number || '');
-      const season = (product as any).season || '';
-      if (styleNumber && season) {
-        productSeasons.set(styleNumber, String(season));
-      }
-    }
-    
-    const targetStyles = Array.from(productSeasons.entries())
-      .filter(([_, season]) => season.toLowerCase() === targetSeason.toLowerCase())
-      .map(([style, _]) => style);
-    
-    console.log(`[Vercel Cron] Found ${targetStyles.length} ${targetSeason} styles`);
-    
-    if (targetStyles.length === 0) {
-      const availableSeasons = Array.from(new Set(productSeasons.values()));
-      
+    if (inventory.length === 0) {
       await serviceSupabase
         .from('sync_jobs')
         .update({
           status: 'failed',
           completed_at: new Date().toISOString(),
-          message: `No ${targetSeason} products found`,
-          error: JSON.stringify({ availableSeasons: availableSeasons.slice(0, 20) }),
+          message: 'No products found',
           progress: 100,
         })
         .eq('id', jobId);
@@ -174,23 +135,13 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       return {
         workspaceId,
         success: false,
-        error: `No ${targetSeason} products found`,
-        availableSeasons: availableSeasons.slice(0, 20),
-        totalProducts: allProducts.length,
+        error: 'No products found',
+        totalStyles: 0,
       };
     }
     
-    // STEP 3: Filter inventory to target styles
-    await updateJobProgress(jobId, 'Filtering inventory...', 40);
-    
-    const targetInventory = inventory.filter((item: any) =>
-      targetStyles.includes(item.style_number)
-    );
-    
-    console.log(`[Vercel Cron] Found ${targetInventory.length} inventory items for target season`);
-    
-    // STEP 4: Fetch ALL sales (2 years)
-    await updateJobProgress(jobId, 'Fetching sales history...', 60);
+    // STEP 3: Fetch sales
+    await updateJobProgress(serviceSupabase, jobId, 'Fetching sales history...', 60);
     
     const twoYearsAgo = new Date();
     twoYearsAgo.setDate(twoYearsAgo.getDate() - 730);
@@ -215,11 +166,11 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       }
     }
     
-    // STEP 5: Save to database
-    await updateJobProgress(jobId, 'Saving products...', 80);
+    // STEP 4: Save to database
+    await updateJobProgress(serviceSupabase, jobId, 'Saving to database...', 80);
     
-    // Transform and save products
-    const transformedProducts = targetInventory.map((item) => ({
+    // Save products
+    const transformedProducts = inventory.map((item: any) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
       name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
@@ -229,7 +180,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       size: item.size || 'Unknown',
       cost: parseFloat(item.cost || '0') || 0,
       price: parseFloat(item.price || '0') || 0,
-      category: targetSeason,
+      category: item.season || 'ALL',
       source: 'apparelmagic',
       is_archived: false,
       last_sale_date: skuActivity.get(item.sku_id)?.lastSale || null,
@@ -239,17 +190,15 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     }));
     
     const uniqueProducts = Array.from(
-      new Map(transformedProducts.map(p => [p.sku, p])).values()
+      new Map(transformedProducts.map((p: any) => [p.sku, p])).values()
     );
     
     await serviceSupabase
       .from('products')
       .upsert(uniqueProducts, { onConflict: 'workspace_id,sku' });
     
-    await updateJobProgress(jobId, 'Saving inventory...', 85);
-    
     // Save inventory
-    const transformedInventory = targetInventory.map((item) => ({
+    const transformedInventory = inventory.map((item: any) => ({
       workspace_id: workspaceId,
       external_id: item.sku_id,
       sku: item.sku_concat || item.sku_id,
@@ -270,17 +219,15 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     }));
     
     const uniqueInventory = Array.from(
-      new Map(transformedInventory.map(i => [i.sku, i])).values()
+      new Map(transformedInventory.map((i: any) => [i.sku, i])).values()
     );
     
     await serviceSupabase
       .from('inventory_levels')
       .upsert(uniqueInventory, { onConflict: 'workspace_id,sku' });
     
-    await updateJobProgress(jobId, 'Saving sales...', 90);
-    
     // Save sales
-    const activeSkuSet = new Set(targetInventory.map(i => i.sku_id));
+    const activeSkuSet = new Set(inventory.map((i: any) => i.sku_id));
     const salesRecords: any[] = [];
     
     for (const invoice of allInvoices) {
@@ -307,7 +254,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     }
     
     const uniqueSales = Array.from(
-      new Map(salesRecords.map(s => [s.external_id, s])).values()
+      new Map(salesRecords.map((s: any) => [s.external_id, s])).values()
     );
     
     await serviceSupabase
@@ -332,8 +279,6 @@ async function syncWorkspace(workspaceId: string, connection: any) {
           productsSynced: uniqueProducts.length,
           inventorySynced: uniqueInventory.length,
           salesSynced: uniqueSales.length,
-          season: targetSeason,
-          totalProductsFetched: allProducts.length,
         },
       })
       .eq('id', jobId);
@@ -346,8 +291,6 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       productsSynced: uniqueProducts.length,
       inventorySynced: uniqueInventory.length,
       salesSynced: uniqueSales.length,
-      season: targetSeason,
-      totalProducts: allProducts.length,
     };
     
   } catch (error) {
@@ -368,10 +311,9 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   }
 }
 
-async function updateJobProgress(jobId: string | undefined, message: string, progress: number) {
+async function updateJobProgress(serviceSupabase: any, jobId: string | undefined, message: string, progress: number) {
   if (!jobId) return;
   
-  const serviceSupabase = createServiceClient();
   await serviceSupabase
     .from('sync_jobs')
     .update({ message, progress })
