@@ -102,6 +102,7 @@ export class ApparelMagicClient {
   async getProducts(pagination?: PaginationParams): Promise<{
     products: ApparelMagicProduct[];
     lastId: string | null;
+    rawResponse?: any;
   }> {
     const response = await this.request<ApparelMagicProductsResponse>(
       'products',
@@ -110,9 +111,14 @@ export class ApparelMagicClient {
       pagination
     );
     
+    // Debug: log the full response structure
+    console.log('[ApparelMagic] Raw response meta:', JSON.stringify(response.meta, null, 2));
+    console.log('[ApparelMagic] Response array length:', response.response?.length);
+    
     return {
       products: response.response || [],
       lastId: response.meta?.pagination?.last_id || null,
+      rawResponse: response,
     };
   }
 
@@ -187,13 +193,14 @@ export class ApparelMagicClient {
           lastId ? { lastId } : undefined
         );
         
-        const { products, lastId: newLastId } = result;
+        const { products, lastId: newLastId, rawResponse } = result;
         
-        console.log(`[ApparelMagic] GET page ${pageCount}: got ${products.length} products`);
+        console.log(`[ApparelMagic] GET page ${pageCount}: got ${products.length} products, lastId: ${newLastId}`);
         
-        // Debug: log the raw response for first page
+        // Debug first page
         if (pageCount === 1) {
-          console.log(`[ApparelMagic] First page meta:`, JSON.stringify(result));
+          console.log(`[ApparelMagic] First page raw meta:`, JSON.stringify(rawResponse?.meta, null, 2));
+          console.log(`[ApparelMagic] First 3 items:`, JSON.stringify(products.slice(0, 3).map((p: any) => ({id: p.id, style: p.style_number, season: p.season}))));
         }
         
         if (products.length === 0) {
@@ -211,24 +218,22 @@ export class ApparelMagicClient {
         }
         
         if (!newLastId) {
-          console.log(`[ApparelMagic] No lastId in response, stopping`);
+          console.log(`[ApparelMagic] No lastId, stopping`);
           break;
         }
         
-        // Debug: check if lastId is actually incrementing
         if (newLastId === lastId) {
-          console.log(`[ApparelMagic] lastId didn't change (${newLastId}), stopping to prevent infinite loop`);
+          console.log(`[ApparelMagic] lastId unchanged (${newLastId}), stopping`);
           break;
         }
         
         lastId = newLastId;
-        console.log(`[ApparelMagic] Next lastId: ${lastId}`);
       }
     } catch (error) {
-      console.error('[ApparelMagic] Error during pagination:', error);
+      console.error('[ApparelMagic] Error:', error);
     }
     
-    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
+    console.log(`[ApparelMagic] Complete: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
   }
   
