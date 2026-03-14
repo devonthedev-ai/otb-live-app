@@ -99,39 +99,44 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   const jobId = job?.id;
   
   try {
-    // STEP 1: Fetch ALL products (try products endpoint first, then styles)
+    // STEP 1: Fetch ALL products using INVENTORY endpoint (not products!)
     await updateJobProgress(jobId, 'Fetching all products...', 10);
     
-    console.log(`[Vercel Cron] Starting to fetch all products...`);
-    let allProducts = await client.getAllProducts();
-    console.log(`[Vercel Cron] Products endpoint returned: ${allProducts.length}`);
+    console.log(`[Vercel Cron] Fetching all inventory...`);
+    const inventory = await client.getAllInventory();
+    console.log(`[Vercel Cron] Fetched ${inventory.length} inventory items`);
     
-    // If products endpoint returned few items, try styles endpoint
-    if (allProducts.length <= 100) {
-      console.log(`[Vercel Cron] Trying styles endpoint...`);
-      const styles = await client.getAllStyles();
-      console.log(`[Vercel Cron] Styles endpoint returned: ${styles.length}`);
-      
-      if (styles.length > allProducts.length) {
-        console.log(`[Vercel Cron] Using styles instead of products`);
-        // Convert styles to product format
-        allProducts = styles.map((style: any) => ({
-          ...style,
-          style_number: style.style_number || style.style,
-          season: style.season || 'ALL',
-        }));
+    // Extract unique products from inventory
+    const productMap = new Map();
+    for (const item of inventory) {
+      const styleNumber = item.style_number;
+      if (!productMap.has(styleNumber)) {
+        productMap.set(styleNumber, {
+          style_number: styleNumber,
+          season: item.season || 'ALL', // inventory might have season
+          id: item.product_id || item.id,
+        });
       }
     }
     
-    console.log(`[Vercel Cron] Fetched ${allProducts.length} total items`);
+    const allProducts = Array.from(productMap.values());
+    console.log(`[Vercel Cron] Extracted ${allProducts.length} unique styles from inventory`);
     
-    // Debug: Check first few products for season field
+    // Debug: Check seasons
     if (allProducts.length > 0) {
-      const sampleSeasons = allProducts.slice(0, 5).map((p: any) => ({ 
+      const sampleSeasons = allProducts.slice(0, 10).map((p: any) => ({ 
         style: p.style_number, 
         season: p.season 
       }));
-      console.log(`[Vercel Cron] Sample items:`, sampleSeasons);
+      console.log(`[Vercel Cron] Sample seasons:`, sampleSeasons);
+      
+      // Count seasons
+      const seasonCounts = new Map();
+      for (const p of allProducts) {
+        const s = p.season || 'UNKNOWN';
+        seasonCounts.set(s, (seasonCounts.get(s) || 0) + 1);
+      }
+      console.log(`[Vercel Cron] Season counts:`, Array.from(seasonCounts.entries()));
     }
     
     // STEP 2: Find target season styles
@@ -175,15 +180,14 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       };
     }
     
-    // STEP 3: Fetch inventory
-    await updateJobProgress(jobId, 'Fetching inventory...', 40);
+    // STEP 3: Filter inventory to target styles
+    await updateJobProgress(jobId, 'Filtering inventory...', 40);
     
-    const inventory = await client.getAllInventory();
-    const targetInventory = inventory.filter(item =>
+    const targetInventory = inventory.filter((item: any) =>
       targetStyles.includes(item.style_number)
     );
     
-    console.log(`[Vercel Cron] Found ${targetInventory.length} inventory items`);
+    console.log(`[Vercel Cron] Found ${targetInventory.length} inventory items for target season`);
     
     // STEP 4: Fetch ALL sales (2 years)
     await updateJobProgress(jobId, 'Fetching sales history...', 60);
