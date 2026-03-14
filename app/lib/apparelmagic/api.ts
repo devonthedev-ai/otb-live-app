@@ -78,7 +78,7 @@ export class ApparelMagicClient {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'No error details');
-      console.error('ApparelMagic API error:', errorText);
+      console.error('ApparelMagic API error:', errorText.substring(0, 200));
       throw new Error(`ApparelMagic API error: ${response.status} ${response.statusText}`);
     }
 
