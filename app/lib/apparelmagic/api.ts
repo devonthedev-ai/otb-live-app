@@ -291,7 +291,7 @@ export class ApparelMagicClient {
     };
   }
 
-  // Get all inventory (handles pagination)
+
   // Get all inventory with rate limiting protection
   async getAllInventory(): Promise<ApparelMagicInventory[]> {
     const allInventory: ApparelMagicInventory[] = [];
