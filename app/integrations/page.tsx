@@ -108,48 +108,20 @@ export default function IntegrationsPage() {
     setIsSyncing(true);
 
     try {
-      // Use chunked sync that works within Vercel timeout
-      let complete = false;
-      let syncId: string | null = null;
-      let attempts = 0;
-      const maxAttempts = 50;
-      
-      while (!complete && attempts < maxAttempts) {
-        attempts++;
-        
-        const res: Response = await fetch('/api/apparelmagic/sync-chunked', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            secret: 'tb-live-cron-secret-2024',
-            workspaceId: currentWorkspace.id,
-            syncId,
-            resume: !!syncId
-          }),
-        });
+      // Use simple sync with limits to stay within Vercel timeout
+      const response = await fetch('/api/apparelmagic/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: currentWorkspace.id }),
+      });
 
-        const data: any = await res.json();
-        
-        if (!res.ok) {
-          throw new Error(data.error || 'Sync failed');
-        }
-        
-        if (data.complete) {
-          complete = true;
-          if (data.success) {
-            setLastSync(new Date().toISOString());
-            alert(`✅ Sync complete! ${data.results?.productsSynced || 0} products synced`);
-          } else {
-            alert(`❌ ${data.error || 'Sync failed'}`);
-          }
-        } else {
-          syncId = data.syncId;
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-      
-      if (attempts >= maxAttempts) {
-        alert('Sync taking too long. Please check dashboard for status.');
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setLastSync(new Date().toISOString());
+        alert(`✅ Sync complete! ${data.results?.productsSynced || 0} products synced`);
+      } else {
+        alert(data.error || 'Sync failed');
       }
     } catch (error) {
       alert('Sync failed: ' + String(error));
