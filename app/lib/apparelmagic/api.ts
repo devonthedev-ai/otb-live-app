@@ -47,9 +47,6 @@ export class ApparelMagicClient {
     if (method === 'GET') {
       const params = new URLSearchParams(authParams);
       // Add pagination params for GET requests
-      if (pagination?.pageSize) {
-        params.append('page_size', String(pagination.pageSize));
-      }
       if (pagination?.lastId) {
         params.append('last_id', pagination.lastId);
       }
