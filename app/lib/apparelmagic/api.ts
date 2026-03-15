@@ -1,4 +1,3 @@
-// app/lib/apparelmagic/api.ts
 import { createClient } from '@/app/lib/supabase/client';
 
 interface ApparelMagicCredentials {
@@ -46,11 +45,9 @@ export class ApparelMagicClient {
 
     if (method === 'GET') {
       const params = new URLSearchParams(authParams);
-      // Note: ApparelMagic doesn't support page_size in GET query params
-      // Default is 100 records per page
-      // But we DO need to pass last_id for pagination
+      // Try page parameter instead of last_id
       if (pagination?.lastId) {
-        params.append('last_id', pagination.lastId);
+        params.append('page', pagination.lastId);
       }
       url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
     } else {
@@ -62,13 +59,13 @@ export class ApparelMagicClient {
       if (pagination?.pageSize) {
         requestData.pagination = {
           page_size: pagination.pageSize,
-          ...(pagination.lastId && { last_id: pagination.lastId }),
+          ...(pagination.lastId && { page: pagination.lastId }),
         };
       }
       requestBody = JSON.stringify(requestData);
     }
 
-    console.log('ApparelMagic API request:', { url: url.replace(this.token, '***TOKEN***'), method });
+    console.log('ApparelMagic API request:', { url: url.replace(this.token, '***TOKEN***'), method, hasPagination: !!pagination?.lastId });
 
     const response = await fetch(url, {
       method,
@@ -102,7 +99,6 @@ export class ApparelMagicClient {
   async getProducts(pagination?: PaginationParams): Promise<{
     products: ApparelMagicProduct[];
     lastId: string | null;
-    rawResponse?: any;
   }> {
     const response = await this.request<ApparelMagicProductsResponse>(
       'products',
@@ -111,60 +107,77 @@ export class ApparelMagicClient {
       pagination
     );
     
-    // Debug: log the full response structure
-    console.log('[ApparelMagic] Raw response meta:', JSON.stringify(response.meta, null, 2));
-    console.log('[ApparelMagic] Response array length:', response.response?.length);
-    
     return {
       products: response.response || [],
       lastId: response.meta?.pagination?.last_id || null,
-      rawResponse: response,
     };
   }
 
-  // Get styles (might have more products)
-  async getStyles(pagination?: PaginationParams): Promise<{
-    styles: any[];
+  // Get inventory/stock
+  async getInventory(pagination?: PaginationParams): Promise<{
+    inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
-    const response = await this.request<any>(
-      'products.styles',
+    const response = await this.request<ApparelMagicInventoryResponse>(
+      'inventory',
       'GET',
       undefined,
       pagination
     );
     
     return {
-      styles: response.response || [],
+      inventory: response.response || [],
       lastId: response.meta?.pagination?.last_id || null,
     };
   }
 
-  // Get all styles
-  async getAllStyles(): Promise<any[]> {
-    const allStyles: any[] = [];
-    let lastId: string | undefined;
-    let pageCount = 0;
+  // Get ALL inventory using PAGE numbers
+  async getAllInventory(): Promise<ApparelMagicInventory[]> {
+    const allInventory: ApparelMagicInventory[] = [];
+    let pageNum = 1;
+    let hasMore = true;
     
-    console.log('[ApparelMagic] Fetching all styles...');
+    console.log('[ApparelMagic] Starting inventory fetch with page numbers...');
     
-    while (pageCount < 50) {
-      pageCount++;
-      const { styles, lastId: newLastId } = await this.getStyles(
-        lastId ? { lastId } : undefined
-      );
-      
-      console.log(`[ApparelMagic] Styles page ${pageCount}: got ${styles.length} styles`);
-      
-      if (styles.length === 0) break;
-      allStyles.push(...styles);
-      
-      if (!newLastId) break;
-      lastId = newLastId;
+    while (hasMore && pageNum <= 10) { // Max 10 pages (1000 items)
+      try {
+        console.log(`[ApparelMagic] Fetching page ${pageNum}...`);
+        const { inventory } = await this.getInventory(
+          pageNum > 1 ? { lastId: String(pageNum) } : undefined
+        );
+        
+        console.log(`[ApparelMagic] Page ${pageNum}: got ${inventory.length} items`);
+        
+        if (inventory.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        allInventory.push(...inventory);
+        
+        // If we got less than 100, this is the last page
+        if (inventory.length < 100) {
+          hasMore = false;
+        } else {
+          pageNum++;
+        }
+        
+        // Rate limiting: max 4 requests per second
+        await new Promise(r => setTimeout(r, 250));
+        
+      } catch (error: any) {
+        if (error.message?.includes('429')) {
+          console.log('[ApparelMagic] Rate limited, waiting 1 second...');
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        console.error(`[ApparelMagic] Error on page ${pageNum}:`, error);
+        break;
+      }
     }
     
-    console.log(`[ApparelMagic] Total styles fetched: ${allStyles.length}`);
-    return allStyles;
+    console.log(`[ApparelMagic] Total: ${allInventory.length} items from ${pageNum} pages`);
+    return allInventory;
   }
 
   // Get all products (handles pagination)
@@ -193,15 +206,9 @@ export class ApparelMagicClient {
           lastId ? { lastId } : undefined
         );
         
-        const { products, lastId: newLastId, rawResponse } = result;
+        const { products, lastId: newLastId } = result;
         
-        console.log(`[ApparelMagic] GET page ${pageCount}: got ${products.length} products, lastId: ${newLastId}`);
-        
-        // Debug first page
-        if (pageCount === 1) {
-          console.log(`[ApparelMagic] First page raw meta:`, JSON.stringify(rawResponse?.meta, null, 2));
-          console.log(`[ApparelMagic] First 3 items:`, JSON.stringify(products.slice(0, 3).map((p: any) => ({id: p.id, style: p.style_number, season: p.season}))));
-        }
+        console.log(`[ApparelMagic] GET page ${pageCount}: got ${products.length} products`);
         
         if (products.length === 0) {
           console.log(`[ApparelMagic] Empty page, stopping`);
@@ -218,125 +225,24 @@ export class ApparelMagicClient {
         }
         
         if (!newLastId) {
-          console.log(`[ApparelMagic] No lastId, stopping`);
+          console.log(`[ApparelMagic] No lastId in response, stopping`);
           break;
         }
         
+        // Debug: check if lastId is actually incrementing
         if (newLastId === lastId) {
-          console.log(`[ApparelMagic] lastId unchanged (${newLastId}), stopping`);
+          console.log(`[ApparelMagic] lastId didn't change (${newLastId}), stopping`);
           break;
         }
         
         lastId = newLastId;
       }
     } catch (error) {
-      console.error('[ApparelMagic] Error:', error);
+      console.error('[ApparelMagic] Error during pagination:', error);
     }
     
-    console.log(`[ApparelMagic] Complete: ${allProducts.length} products from ${pageCount} pages`);
+    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
     return allProducts;
-  }
-  
-  // Get products using POST (better pagination)
-  async getProductsPOST(pagination?: PaginationParams): Promise<{
-    products: ApparelMagicProduct[];
-    lastId: string | null;
-  }> {
-    const authParams = this.getAuthParams();
-    
-    const body: any = {
-      ...authParams,
-    };
-    
-    if (pagination?.lastId) {
-      body.pagination = { last_id: pagination.lastId };
-    }
-    
-    const response = await fetch(`${this.baseUrl}/products`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'User-Agent': 'OTB-Live/1.0'
-      },
-      body: JSON.stringify(body),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Products API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    return {
-      products: data.response || [],
-      lastId: data.meta?.pagination?.last_id || null,
-    };
-  }
-
-  // Get inventory/stock
-  async getInventory(pagination?: PaginationParams): Promise<{
-    inventory: ApparelMagicInventory[];
-    lastId: string | null;
-  }> {
-    const response = await this.request<ApparelMagicInventoryResponse>(
-      'inventory',
-      'GET',
-      undefined,
-      pagination
-    );
-    
-    return {
-      inventory: response.response || [],
-      lastId: response.meta?.pagination?.last_id || null,
-    };
-  }
-
-
-  // Get all inventory with rate limiting protection
-  async getAllInventory(): Promise<ApparelMagicInventory[]> {
-    const allInventory: ApparelMagicInventory[] = [];
-    let lastId: string | undefined;
-    let pageCount = 0;
-    const maxPages = 1; // Only fetch first page (100 items) due to API limit
-    
-    console.log('[ApparelMagic] Starting inventory fetch (max 100 items due to API limits)...');
-    
-    while (pageCount < maxPages) {
-      pageCount++;
-      
-      try {
-        const { inventory, lastId: newLastId } = await this.getInventory(
-          lastId ? { lastId } : undefined
-        );
-        
-        console.log(`[ApparelMagic] Inventory page ${pageCount}: got ${inventory.length} items`);
-        
-        if (inventory.length === 0) break;
-        
-        allInventory.push(...inventory);
-        
-        // API limit - only 100 items available
-        if (inventory.length < 100) break;
-        
-        if (!newLastId) break;
-        lastId = newLastId;
-        
-        // Rate limiting: max 4 requests per second
-        await new Promise(r => setTimeout(r, 250));
-        
-      } catch (error: any) {
-        if (error.message?.includes('429')) {
-          console.log('[ApparelMagic] Rate limited (429), waiting 1 second...');
-          await new Promise(r => setTimeout(r, 1000));
-          pageCount--; // Retry this page
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    console.log(`[ApparelMagic] Inventory fetch complete. Total: ${allInventory.length} items (API limit: 100)`);
-    return allInventory;
   }
 
   // Get invoices (sales) with date filter
@@ -354,7 +260,7 @@ export class ApparelMagicClient {
     const response = await this.request<ApparelMagicInvoicesResponse>(
       'invoices',
       'GET',
-      Object.keys(params).length > 0 ? params : undefined,
+      undefined,
       pagination
     );
     
@@ -370,8 +276,7 @@ export class ApparelMagicClient {
     let lastId: string | undefined;
     
     while (true) {
-      const { invoices, lastId: newLastId } = await this.getInvoices(
-        startDate,
+      const { invoices, lastId: newLastId } = await this.getInvoices(startDate, 
         lastId ? { lastId } : undefined
       );
       
@@ -382,24 +287,6 @@ export class ApparelMagicClient {
     }
     
     return allInvoices;
-  }
-
-  // Get orders/sales
-  async getOrders(pagination?: PaginationParams): Promise<{
-    orders: ApparelMagicOrder[];
-    lastId: string | null;
-  }> {
-    const response = await this.request<ApparelMagicOrdersResponse>(
-      'orders',
-      'GET',
-      undefined,
-      pagination
-    );
-    
-    return {
-      orders: response.response || [],
-      lastId: response.meta?.pagination?.last_id || null,
-    };
   }
 
   // Get vendors
@@ -507,52 +394,35 @@ interface ApparelMagicInventory {
   product_id: string;
   style_number: string;
   attr_2?: string;
-  attr_3?: string;
   size?: string;
   sku_concat?: string;
-  qty_inventory: string;
-  qty_avail_sell: string;
-  qty_alloc: string;
-  qty_picked: string;
-  qty_open_po: string;
+  cost?: string;
+  price?: string;
+  season?: string;
+  qty_inventory?: string;
+  qty_avail_sell?: string;
+  qty_alloc?: string;
+  qty_picked?: string;
+  qty_open_po?: string;
   upc_display?: string;
   upc_11?: string;
-  price?: string;
-  cost?: string;
   weight?: string;
   [key: string]: unknown;
 }
 
-interface ApparelMagicInvoiceItem {
-  id: string;
-  sku_id: string;
-  style_number: string;
-  attr_2?: string;
-  attr_3?: string;
-  size?: string;
-  qty: string;
-  unit_price: string;
-  amount: string;
-}
-
 interface ApparelMagicInvoice {
   invoice_id: string;
-  customer_id: string;
   date: string;
-  invoice_items?: ApparelMagicInvoiceItem[];
-  [key: string]: unknown;
-}
-
-interface ApparelMagicOrder {
-  id: string;
-  order_number: string;
-  order_date: string;
-  status: string;
-  items: Array<{
-    product_id: string;
-    sku: string;
-    quantity: number;
-    price: number;
+  customer_id: string;
+  invoice_items?: Array<{
+    id: string;
+    sku_id: string;
+    style_number: string;
+    attr_2?: string;
+    size?: string;
+    qty: string;
+    unit_price: string;
+    amount: string;
   }>;
   [key: string]: unknown;
 }
@@ -580,9 +450,12 @@ export async function getApparelMagicCredentials(workspaceId: string): Promise<A
     .from('apparelmagic_connections')
     .select('subdomain, token')
     .eq('workspace_id', workspaceId)
-    .maybeSingle();
+    .single();
   
-  if (error || !data) return null;
+  if (error || !data) {
+    console.error('Error fetching ApparelMagic credentials:', error);
+    return null;
+  }
   
   return {
     subdomain: data.subdomain,
@@ -593,9 +466,8 @@ export async function getApparelMagicCredentials(workspaceId: string): Promise<A
 export async function saveApparelMagicCredentials(
   workspaceId: string,
   credentials: ApparelMagicCredentials
-): Promise<{ error: Error | null }> {
-  // Use service role to bypass RLS (we already checked permissions in API route)
-  const supabase = createServiceClient();
+): Promise<{ error?: any }> {
+  const supabase = createClient();
   
   const { error } = await supabase
     .from('apparelmagic_connections')
@@ -604,18 +476,22 @@ export async function saveApparelMagicCredentials(
       subdomain: credentials.subdomain,
       token: credentials.token,
       updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'workspace_id',
-    });
+    }, { onConflict: 'workspace_id' });
   
-  return { error: error as Error | null };
+  if (error) {
+    console.error('Error saving ApparelMagic credentials:', error);
+    return { error };
+  }
+  
+  return {};
 }
 
-export async function deleteApparelMagicCredentials(workspaceId: string): Promise<void> {
-  const supabase = createClient();
-  
-  await supabase
-    .from('apparelmagic_connections')
-    .delete()
-    .eq('workspace_id', workspaceId);
+interface ApparelMagicOrder {
+  id: string;
+  order_id: string;
+  customer_id: string;
+  date: string;
+  total: string;
+  status: string;
+  [key: string]: unknown;
 }
