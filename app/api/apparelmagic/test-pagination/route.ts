@@ -22,31 +22,43 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    // Test first page
-    console.log('Testing page 1...');
-    const page1 = await client.getProducts({ pageSize: 100 });
+    // Test inventory endpoint (which we know works)
+    console.log('Testing inventory page 1...');
+    const invPage1 = await client.getInventory({ pageSize: 100 });
+    
+    // Test products endpoint
+    console.log('Testing products page 1...');
+    const prodPage1 = await client.getProducts({ pageSize: 100 });
     
     // Test second page if we have last_id
-    let page2: any = null;
-    if (page1.lastId) {
-      console.log(`Testing page 2 with last_id: ${page1.lastId}...`);
-      page2 = await client.getProducts({ pageSize: 100, lastId: page1.lastId });
+    let invPage2: any = null;
+    if (invPage1.lastId) {
+      console.log(`Testing inventory page 2 with last_id: ${invPage1.lastId}...`);
+      invPage2 = await client.getInventory({ pageSize: 100, lastId: invPage1.lastId });
     }
     
     return NextResponse.json({
-      page1: {
-        count: page1.products.length,
-        lastId: page1.lastId,
-        firstProduct: page1.products[0]?.style_number || 'none',
-        lastProduct: page1.products[page1.products.length - 1]?.style_number || 'none',
+      inventory: {
+        page1: {
+          count: invPage1.inventory.length,
+          lastId: invPage1.lastId,
+          firstItem: invPage1.inventory[0]?.style_number || 'none',
+          lastItem: invPage1.inventory[invPage1.inventory.length - 1]?.style_number || 'none',
+        },
+        page2: invPage2 ? {
+          count: invPage2.inventory.length,
+          lastId: invPage2.lastId,
+          firstItem: invPage2.inventory[0]?.style_number || 'none',
+          lastItem: invPage2.inventory[invPage2.inventory.length - 1]?.style_number || 'none',
+        } : null,
       },
-      page2: page2 ? {
-        count: page2.products.length,
-        lastId: page2.lastId,
-        firstProduct: page2.products[0]?.style_number || 'none',
-        lastProduct: page2.products[page2.products.length - 1]?.style_number || 'none',
-      } : null,
-      totalIfBothPages: page1.products.length + (page2?.products?.length || 0),
+      products: {
+        page1: {
+          count: prodPage1.products.length,
+          lastId: prodPage1.lastId,
+        },
+      },
+      totalInventory: invPage1.inventory.length + (invPage2?.inventory?.length || 0),
     });
     
   } catch (error) {
