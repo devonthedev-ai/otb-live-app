@@ -127,12 +127,12 @@ export class ApparelMagicClient {
     }
   }
 
-  // Get products with pagination (POST)
+  // Get products with pagination (GET)
   async getProducts(pagination?: PaginationParams): Promise<{
     products: ApparelMagicProduct[];
     lastId: string | null;
   }> {
-    const response = await this.requestPost<ApparelMagicProductsResponse>(
+    const response = await this.requestGet<ApparelMagicProductsResponse>(
       'products',
       pagination
     );
@@ -384,12 +384,12 @@ export class ApparelMagicClient {
     return allInvoices;
   }
 
-  // Get vendors (POST)
+  // Get vendors (GET)
   async getVendors(pagination?: PaginationParams): Promise<{
     vendors: ApparelMagicVendor[];
     lastId: string | null;
   }> {
-    const response = await this.requestPost<ApparelMagicVendorsResponse>(
+    const response = await this.requestGet<ApparelMagicVendorsResponse>(
       'vendors',
       pagination
     );
@@ -419,12 +419,12 @@ export class ApparelMagicClient {
     return allVendors;
   }
 
-  // Get product attributes (POST)
+  // Get product attributes (GET)
   async getProductAttributes(pagination?: PaginationParams): Promise<{
     attributes: any[];
     lastId: string | null;
   }> {
-    const response = await this.requestPost<any>(
+    const response = await this.requestGet<any>(
       'product_attributes',
       pagination
     );
