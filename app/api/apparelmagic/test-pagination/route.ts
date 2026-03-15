@@ -22,13 +22,9 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    // Test inventory endpoint (which we know works)
+    // Test inventory endpoint
     console.log('Testing inventory page 1...');
     const invPage1 = await client.getInventory({ pageSize: 100 });
-    
-    // Test products endpoint
-    console.log('Testing products page 1...');
-    const prodPage1 = await client.getProducts({ pageSize: 100 });
     
     // Test second page if we have last_id
     let invPage2: any = null;
@@ -37,26 +33,31 @@ export async function GET(request: NextRequest) {
       invPage2 = await client.getInventory({ pageSize: 100, lastId: invPage1.lastId });
     }
     
+    // Check if pages have different items
+    const page1Ids = new Set(invPage1.inventory.map((i: any) => i.sku_id));
+    const page2Ids = invPage2 ? new Set(invPage2.inventory.map((i: any) => i.sku_id)) : new Set();
+    const uniqueToPage2 = invPage2 ? invPage2.inventory.filter((i: any) => !page1Ids.has(i.sku_id)) : [];
+    const duplicateCount = invPage2 ? invPage2.inventory.filter((i: any) => page1Ids.has(i.sku_id)).length : 0;
+    
     return NextResponse.json({
       inventory: {
         page1: {
           count: invPage1.inventory.length,
           lastId: invPage1.lastId,
-          firstItem: invPage1.inventory[0]?.style_number || 'none',
-          lastItem: invPage1.inventory[invPage1.inventory.length - 1]?.style_number || 'none',
+          sampleIds: invPage1.inventory.slice(0, 3).map((i: any) => i.sku_id),
         },
         page2: invPage2 ? {
           count: invPage2.inventory.length,
           lastId: invPage2.lastId,
-          firstItem: invPage2.inventory[0]?.style_number || 'none',
-          lastItem: invPage2.inventory[invPage2.inventory.length - 1]?.style_number || 'none',
+          sampleIds: invPage2.inventory.slice(0, 3).map((i: any) => i.sku_id),
         } : null,
       },
-      products: {
-        page1: {
-          count: prodPage1.products.length,
-          lastId: prodPage1.lastId,
-        },
+      analysis: {
+        page1UniqueIds: page1Ids.size,
+        page2UniqueIds: page2Ids.size,
+        uniqueToPage2: uniqueToPage2.length,
+        duplicates: duplicateCount,
+        totalUnique: page1Ids.size + uniqueToPage2.length,
       },
       totalInventory: invPage1.inventory.length + (invPage2?.inventory?.length || 0),
     });
