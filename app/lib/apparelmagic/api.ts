@@ -124,12 +124,11 @@ export class ApparelMagicClient {
     inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
-    // Temporarily ignore pagination to test basic request
     const response = await this.request<ApparelMagicInventoryResponse>(
       'inventory',
       'GET',
       undefined,
-      undefined  // No pagination for now
+      pagination
     );
     
     return {
