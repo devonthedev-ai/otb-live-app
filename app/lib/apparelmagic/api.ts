@@ -41,14 +41,17 @@ export class ApparelMagicClient {
     let headers: Record<string, string> = {
       'User-Agent': 'OTB-Live/1.0',
       'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
     };
 
     if (method === 'GET') {
       const params = new URLSearchParams(authParams);
-      // Try page parameter instead of last_id
+      // Try page parameter and larger page size
       if (pagination?.lastId) {
         params.append('page', pagination.lastId);
       }
+      // Request larger page size for gzip compression
+      params.append('page_size', '500');
       url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
     } else {
       url = `${this.baseUrl}/${endpoint}`;
