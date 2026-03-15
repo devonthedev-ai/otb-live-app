@@ -28,7 +28,7 @@ export class ApparelMagicClient {
     };
   }
 
-  private async request<T>(
+  private async requestPost<T>(
     endpoint: string,
     pagination?: PaginationParams
   ): Promise<T> {
@@ -47,7 +47,7 @@ export class ApparelMagicClient {
       requestBody.pagination.last_id = String(pagination.lastId);
     }
 
-    console.log('ApparelMagic API request:', { 
+    console.log('ApparelMagic API POST:', { 
       url, 
       endpoint,
       pageSize: requestBody.pagination.page_size,
@@ -73,11 +73,52 @@ export class ApparelMagicClient {
     return response.json();
   }
 
+  private async requestGet<T>(
+    endpoint: string,
+    pagination?: PaginationParams
+  ): Promise<T> {
+    const authParams = this.getAuthParams();
+    const params = new URLSearchParams(authParams);
+    
+    // Add pagination params
+    if (pagination?.pageSize) {
+      params.append('page_size', String(pagination.pageSize));
+    }
+    if (pagination?.lastId) {
+      params.append('last_id', pagination.lastId);
+    }
+    
+    const url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
+    
+    console.log('ApparelMagic API GET:', { 
+      url: url.replace(this.token, '***TOKEN***'), 
+      endpoint,
+      pageSize: pagination?.pageSize,
+      lastId: pagination?.lastId || 'none'
+    });
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'OTB-Live/1.0',
+        'Accept-Encoding': 'gzip, deflate',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error details');
+      console.error('ApparelMagic API error:', errorText.substring(0, 200));
+      throw new Error(`ApparelMagic API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
   // Test connection
   async testConnection(): Promise<boolean> {
     try {
       console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain, url: this.baseUrl });
-      const result = await this.request('products', { pageSize: 1 });
+      const result = await this.requestGet('products', { pageSize: 1 });
       console.log('ApparelMagic connection test result:', JSON.stringify(result).slice(0, 200));
       return true;
     } catch (error) {
@@ -86,12 +127,12 @@ export class ApparelMagicClient {
     }
   }
 
-  // Get products with pagination
+  // Get products with pagination (POST)
   async getProducts(pagination?: PaginationParams): Promise<{
     products: ApparelMagicProduct[];
     lastId: string | null;
   }> {
-    const response = await this.request<ApparelMagicProductsResponse>(
+    const response = await this.requestPost<ApparelMagicProductsResponse>(
       'products',
       pagination
     );
@@ -102,12 +143,12 @@ export class ApparelMagicClient {
     };
   }
 
-  // Get inventory/stock
+  // Get inventory/stock (GET - this endpoint works with GET)
   async getInventory(pagination?: PaginationParams): Promise<{
     inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
-    const response = await this.request<ApparelMagicInventoryResponse>(
+    const response = await this.requestGet<ApparelMagicInventoryResponse>(
       'inventory',
       pagination
     );
@@ -343,12 +384,12 @@ export class ApparelMagicClient {
     return allInvoices;
   }
 
-  // Get vendors
+  // Get vendors (POST)
   async getVendors(pagination?: PaginationParams): Promise<{
     vendors: ApparelMagicVendor[];
     lastId: string | null;
   }> {
-    const response = await this.request<ApparelMagicVendorsResponse>(
+    const response = await this.requestPost<ApparelMagicVendorsResponse>(
       'vendors',
       pagination
     );
@@ -378,12 +419,12 @@ export class ApparelMagicClient {
     return allVendors;
   }
 
-  // Get product attributes
+  // Get product attributes (POST)
   async getProductAttributes(pagination?: PaginationParams): Promise<{
     attributes: any[];
     lastId: string | null;
   }> {
-    const response = await this.request<any>(
+    const response = await this.requestPost<any>(
       'product_attributes',
       pagination
     );
