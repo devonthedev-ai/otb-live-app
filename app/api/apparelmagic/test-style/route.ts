@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         qty: i.qty_inventory,
       })),
       partialMatches: partialMatches.length,
-      partialMatchStyles: [...new Set(partialMatches.map((i: any) => i.style_number))],
+      partialMatchStyles: Array.from(new Set(partialMatches.map((i: any) => i.style_number))),
     });
     
   } catch (error) {
