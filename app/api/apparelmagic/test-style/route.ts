@@ -22,37 +22,32 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    // Search for style TS0085
+    // Search for style TS0085 using the new filtered method
     const targetStyle = 'TS0085';
     
-    // Get all inventory and search for the style
-    console.log('Fetching inventory to search for', targetStyle);
+    console.log('Fetching inventory filtered by style', targetStyle);
+    const filteredInventory = await client.getInventoryByStyle(targetStyle);
+    
+    // Also get regular inventory to compare
+    console.log('Fetching regular inventory');
     const { inventory, lastId } = await client.getInventory();
-    
-    // Find items matching the style
-    const matchingItems = inventory.filter((item: any) => 
-      item.style_number?.toLowerCase() === targetStyle.toLowerCase()
-    );
-    
-    // Also check for partial matches
-    const partialMatches = inventory.filter((item: any) => 
-      item.style_number?.toLowerCase().includes(targetStyle.toLowerCase())
-    );
     
     return NextResponse.json({
       searchStyle: targetStyle,
-      totalInventoryItems: inventory.length,
-      lastId: lastId,
-      exactMatches: matchingItems.length,
-      exactMatchDetails: matchingItems.map((i: any) => ({
-        sku_id: i.sku_id,
-        style: i.style_number,
-        color: i.attr_2,
-        size: i.size,
-        qty: i.qty_inventory,
-      })),
-      partialMatches: partialMatches.length,
-      partialMatchStyles: Array.from(new Set(partialMatches.map((i: any) => i.style_number))),
+      filteredResults: {
+        count: filteredInventory.length,
+        items: filteredInventory.map((i: any) => ({
+          sku_id: i.sku_id,
+          style: i.style_number,
+          color: i.attr_2,
+          size: i.size,
+          qty: i.qty_inventory,
+        })),
+      },
+      regularInventory: {
+        count: inventory.length,
+        lastId: lastId,
+      },
     });
     
   } catch (error) {
