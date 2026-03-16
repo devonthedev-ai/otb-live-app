@@ -54,9 +54,9 @@ export class ApparelMagicClient {
     // Add filters (per AM docs: parameters0field, parameters0operator, parameters0value)
     if (filters) {
       filters.forEach((f, index) => {
-        params.append(`parameters[${index}][field]`, f.field);
-        params.append(`parameters[${index}][operator]`, f.operator);
-        params.append(`parameters[${index}][value]`, f.value);
+        params.append(`parameters${index}field`, f.field);
+        params.append(`parameters${index}operator`, f.operator);
+        params.append(`parameters${index}value`, f.value);
       });
     }
     
