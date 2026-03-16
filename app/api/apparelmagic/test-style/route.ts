@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    // Search for style TS0085 using the new filtered method
-    const targetStyle = 'TS0085';
+    // Search for style ZIP1 (we know this exists from previous results)
+    const targetStyle = 'ZIP1';
     
     console.log('Fetching inventory filtered by style', targetStyle);
     const filteredInventory = await client.getInventoryByStyle(targetStyle);
@@ -32,21 +32,24 @@ export async function GET(request: NextRequest) {
     console.log('Fetching regular inventory');
     const { inventory, lastId } = await client.getInventory();
     
+    // Get unique style numbers from inventory
+    const uniqueStyles = Array.from(new Set(inventory.map((i: any) => i.style_number)));
+    
     return NextResponse.json({
       searchStyle: targetStyle,
       filteredResults: {
         count: filteredInventory.length,
-        items: filteredInventory.map((i: any) => ({
+        items: filteredInventory.slice(0, 5).map((i: any) => ({
           sku_id: i.sku_id,
           style: i.style_number,
           color: i.attr_2,
           size: i.size,
-          qty: i.qty_inventory,
         })),
       },
       regularInventory: {
         count: inventory.length,
         lastId: lastId,
+        uniqueStyles: uniqueStyles.slice(0, 10),
       },
     });
     
