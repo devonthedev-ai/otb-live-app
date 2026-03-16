@@ -10,6 +10,12 @@ interface PaginationParams {
   lastId?: string;
 }
 
+interface FilterParams {
+  field: string;
+  operator: string;
+  value: string;
+}
+
 export class ApparelMagicClient {
   private subdomain: string;
   private token: string;
@@ -28,60 +34,56 @@ export class ApparelMagicClient {
     };
   }
 
-  private async request<T>(
+  // POST request with pagination in body (per AM docs)
+  private async requestPost<T>(
     endpoint: string,
-    method: 'GET' | 'POST' = 'GET',
-    body?: Record<string, unknown>,
-    pagination?: PaginationParams
+    pagination?: PaginationParams,
+    filters?: FilterParams[]
   ): Promise<T> {
-    const authParams = this.getAuthParams();
+    const url = `${this.baseUrl}/${endpoint}`;
     
-    let url: string;
-    let requestBody: string | undefined;
-    let headers: Record<string, string> = {
-      'User-Agent': 'OTB-Live/1.0',
-      'Content-Type': 'application/json',
-      'Accept-Encoding': 'gzip, deflate',
+    // Build request body per ApparelMagic docs
+    const requestBody: any = {
+      ...this.getAuthParams(),
+      pagination: {
+        page_size: pagination?.pageSize || 100,
+      },
     };
-
-    if (method === 'GET') {
-      const params = new URLSearchParams(authParams);
-      // Add pagination params for GET requests
-      if (pagination?.lastId) {
-        params.append('last_id', pagination.lastId);
-      }
-      url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
-    } else {
-      url = `${this.baseUrl}/${endpoint}`;
-      const requestData = {
-        ...authParams,
-        ...body,
-      };
-      if (pagination?.pageSize) {
-        requestData.pagination = {
-          page_size: pagination.pageSize,
-          ...(pagination.lastId && { last_id: pagination.lastId }),
-        };
-      }
-      requestBody = JSON.stringify(requestData);
+    
+    // Add last_id for pagination (must be string per docs)
+    if (pagination?.lastId) {
+      requestBody.pagination.last_id = String(pagination.lastId);
+    }
+    
+    // Add filters if provided
+    if (filters && filters.length > 0) {
+      requestBody.parameters = filters.map((f, index) => ({
+        field: f.field,
+        operator: f.operator,
+        value: f.value,
+      }));
     }
 
-    console.log('ApparelMagic API request:', { 
-      url: url.replace(this.token, '***TOKEN***'), 
-      method, 
-      hasPagination: !!pagination?.lastId,
-      pageSize: pagination?.pageSize
+    console.log('[ApparelMagic] POST:', { 
+      endpoint,
+      pageSize: requestBody.pagination.page_size,
+      lastId: requestBody.pagination.last_id || 'none',
+      hasFilters: !!filters,
     });
 
     const response = await fetch(url, {
-      method,
-      headers,
-      body: requestBody,
+      method: 'POST',
+      headers: {
+        'User-Agent': 'OTB-Live/1.0',
+        'Content-Type': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+      },
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'No error details');
-      console.error('ApparelMagic API error:', errorText.substring(0, 200));
+      console.error('[ApparelMagic] API error:', errorText.substring(0, 200));
       throw new Error(`ApparelMagic API error: ${response.status} ${response.statusText}`);
     }
 
@@ -91,43 +93,23 @@ export class ApparelMagicClient {
   // Test connection
   async testConnection(): Promise<boolean> {
     try {
-      console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain, url: this.baseUrl });
-      const result = await this.request('products', 'GET', undefined, { pageSize: 1 });
-      console.log('ApparelMagic connection test result:', JSON.stringify(result).slice(0, 200));
+      console.log('Testing ApparelMagic connection:', { subdomain: this.subdomain });
+      const result = await this.requestPost('products', { pageSize: 1 });
+      console.log('Connection test:', JSON.stringify(result).slice(0, 200));
       return true;
     } catch (error) {
-      console.error('ApparelMagic connection failed:', error);
+      console.error('Connection failed:', error);
       return false;
     }
   }
 
-  // Get products with pagination (GET with query params)
-  async getProducts(pagination?: PaginationParams): Promise<{
-    products: ApparelMagicProduct[];
-    lastId: string | null;
-  }> {
-    const response = await this.request<ApparelMagicProductsResponse>(
-      'products',
-      'GET',
-      undefined,
-      pagination
-    );
-    
-    return {
-      products: response.response || [],
-      lastId: response.meta?.pagination?.last_id || null,
-    };
-  }
-
-  // Get inventory/stock (GET with query params)
+  // Get inventory with POST pagination
   async getInventory(pagination?: PaginationParams): Promise<{
     inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
-    const response = await this.request<ApparelMagicInventoryResponse>(
+    const response = await this.requestPost<ApparelMagicInventoryResponse>(
       'inventory',
-      'GET',
-      undefined,
       pagination
     );
     
@@ -137,25 +119,36 @@ export class ApparelMagicClient {
     };
   }
 
-  // Get ALL inventory with proper pagination
+  // Get inventory filtered by style number
+  async getInventoryByStyle(styleNumber: string): Promise<ApparelMagicInventory[]> {
+    const response = await this.requestPost<ApparelMagicInventoryResponse>(
+      'inventory',
+      { pageSize: 1000 },
+      [{ field: 'style_number', operator: '=', value: styleNumber }]
+    );
+    
+    return response.response || [];
+  }
+
+  // Get ALL inventory with proper POST pagination
   async getAllInventory(): Promise<ApparelMagicInventory[]> {
     const allInventory: ApparelMagicInventory[] = [];
     let lastId: string | undefined;
     let pageNum = 0;
-    const maxPages = 20; // Safety limit (2000 items max)
+    const maxPages = 50; // Safety limit (5000 items max with page_size 100)
     
-    console.log('[ApparelMagic] Starting inventory fetch with pagination...');
+    console.log('[ApparelMagic] Starting inventory fetch with POST pagination...');
     
     while (pageNum < maxPages) {
       pageNum++;
       
       try {
-        console.log(`[ApparelMagic] Fetching page ${pageNum}${lastId ? ` (last_id: ${lastId})` : ''}...`);
+        console.log(`[ApparelMagic] Page ${pageNum}${lastId ? ` (last_id: ${lastId})` : ''}`);
         const { inventory, lastId: newLastId } = await this.getInventory(
           lastId ? { lastId, pageSize: 100 } : { pageSize: 100 }
         );
         
-        console.log(`[ApparelMagic] Page ${pageNum}: got ${inventory.length} items, last_id: ${newLastId || 'null'}`);
+        console.log(`[ApparelMagic] Page ${pageNum}: ${inventory.length} items, last_id: ${newLastId || 'null'}`);
         
         if (inventory.length === 0) {
           console.log('[ApparelMagic] Empty page, stopping');
@@ -166,11 +159,11 @@ export class ApparelMagicClient {
         
         // If no last_id, we're done
         if (!newLastId) {
-          console.log('[ApparelMagic] No last_id returned, all pages fetched');
+          console.log('[ApparelMagic] No last_id, all pages fetched');
           break;
         }
         
-        // Avoid infinite loop - check if last_id changed
+        // Avoid infinite loop
         if (newLastId === lastId) {
           console.log('[ApparelMagic] last_id unchanged, stopping');
           break;
@@ -183,7 +176,7 @@ export class ApparelMagicClient {
         
       } catch (error: any) {
         if (error.message?.includes('429')) {
-          console.log('[ApparelMagic] Rate limited, waiting 1 second...');
+          console.log('[ApparelMagic] Rate limited, waiting...');
           await new Promise(r => setTimeout(r, 1000));
           continue;
         }
@@ -192,95 +185,81 @@ export class ApparelMagicClient {
       }
     }
     
-    console.log(`[ApparelMagic] Total: ${allInventory.length} items from ${pageNum} pages`);
+    console.log(`[ApparelMagic] Complete: ${allInventory.length} items from ${pageNum} pages`);
     return allInventory;
   }
 
-  // Get all products (handles pagination)
-  async getAllProducts(): Promise<ApparelMagicProduct[]> {
-    return this.getAllProductsChunked();
+  // Get products with POST pagination
+  async getProducts(pagination?: PaginationParams): Promise<{
+    products: ApparelMagicProduct[];
+    lastId: string | null;
+  }> {
+    const response = await this.requestPost<ApparelMagicProductsResponse>(
+      'products',
+      pagination
+    );
+    
+    return {
+      products: response.response || [],
+      lastId: response.meta?.pagination?.last_id || null,
+    };
   }
 
-  // Get all products (handles pagination) - CHUNKED VERSION
-  async getAllProductsChunked(
-    onChunk?: (products: ApparelMagicProduct[], page: number) => Promise<boolean> | boolean,
-    maxPages: number = 50
-  ): Promise<ApparelMagicProduct[]> {
+  // Get ALL products with pagination
+  async getAllProducts(): Promise<ApparelMagicProduct[]> {
     const allProducts: ApparelMagicProduct[] = [];
     let lastId: string | undefined;
     let pageCount = 0;
+    const maxPages = 50;
     
-    console.log(`[ApparelMagic] Starting product fetch with pagination, maxPages: ${maxPages}`);
+    console.log('[ApparelMagic] Fetching all products...');
     
-    try {
-      while (pageCount < maxPages) {
-        pageCount++;
-        
-        console.log(`[ApparelMagic] Fetching page ${pageCount}${lastId ? ` (last_id: ${lastId})` : ''}`);
-        
-        const result = await this.getProducts(
+    while (pageCount < maxPages) {
+      pageCount++;
+      
+      try {
+        const { products, lastId: newLastId } = await this.getProducts(
           lastId ? { lastId, pageSize: 100 } : { pageSize: 100 }
         );
         
-        const { products, lastId: newLastId } = result;
+        console.log(`[ApparelMagic] Products page ${pageCount}: ${products.length} items`);
         
-        console.log(`[ApparelMagic] Page ${pageCount}: got ${products.length} products, last_id: ${newLastId || 'null'}`);
-        
-        if (products.length === 0) {
-          console.log(`[ApparelMagic] Empty page, stopping`);
-          break;
-        }
+        if (products.length === 0) break;
         
         allProducts.push(...products);
         
-        if (onChunk) {
-          const shouldContinue = await onChunk(products, pageCount);
-          if (shouldContinue === false) {
-            break;
-          }
-        }
-        
-        if (!newLastId) {
-          console.log(`[ApparelMagic] No last_id, all pages fetched`);
-          break;
-        }
-        
-        // Avoid infinite loop
-        if (newLastId === lastId) {
-          console.log(`[ApparelMagic] last_id unchanged (${newLastId}), stopping`);
-          break;
-        }
+        if (!newLastId || newLastId === lastId) break;
         
         lastId = newLastId;
-        
-        // Rate limiting
         await new Promise(r => setTimeout(r, 250));
+        
+      } catch (error: any) {
+        if (error.message?.includes('429')) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        throw error;
       }
-    } catch (error) {
-      console.error('[ApparelMagic] Error during pagination:', error);
     }
     
-    console.log(`[ApparelMagic] Pagination complete. Total: ${allProducts.length} products from ${pageCount} pages`);
+    console.log(`[ApparelMagic] Total products: ${allProducts.length}`);
     return allProducts;
   }
 
-  // Get invoices (sales) with date filter
+  // Get invoices with POST pagination
   async getInvoices(startDate?: string, pagination?: PaginationParams): Promise<{
     invoices: ApparelMagicInvoice[];
     lastId: string | null;
   }> {
-    const params: Record<string, string> = {};
+    const filters: FilterParams[] = [];
     if (startDate) {
-      params['parameters[0][field]'] = 'date';
-      params['parameters[0][operator]'] = '>=';
-      params['parameters[0][value]'] = startDate;
+      filters.push({ field: 'date', operator: '>=', value: startDate });
     }
     
-    const response = await this.request<ApparelMagicInvoicesResponse>(
+    const response = await this.requestPost<ApparelMagicInvoicesResponse>(
       'invoices',
-      'GET',
-      undefined,
-      pagination
+      pagination,
+      filters.length > 0 ? filters : undefined
     );
     
     return {
@@ -289,7 +268,7 @@ export class ApparelMagicClient {
     };
   }
 
-  // Get all invoices (handles pagination)
+  // Get all invoices
   async getAllInvoices(startDate?: string): Promise<ApparelMagicInvoice[]> {
     const allInvoices: ApparelMagicInvoice[] = [];
     let lastId: string | undefined;
@@ -305,18 +284,13 @@ export class ApparelMagicClient {
           lastId ? { lastId, pageSize: 100 } : { pageSize: 100 }
         );
         
-        console.log(`[ApparelMagic] Invoices page ${pageCount}: got ${invoices.length} invoices`);
-        
         if (invoices.length === 0) break;
         
         allInvoices.push(...invoices);
         
-        if (!newLastId) break;
-        if (newLastId === lastId) break;
+        if (!newLastId || newLastId === lastId) break;
         
         lastId = newLastId;
-        
-        // Rate limiting
         await new Promise(r => setTimeout(r, 250));
         
       } catch (error: any) {
@@ -324,12 +298,10 @@ export class ApparelMagicClient {
           await new Promise(r => setTimeout(r, 1000));
           continue;
         }
-        console.error(`[ApparelMagic] Error fetching invoices page ${pageCount}:`, error);
         break;
       }
     }
     
-    console.log(`[ApparelMagic] Total invoices: ${allInvoices.length} from ${pageCount} pages`);
     return allInvoices;
   }
 
@@ -338,10 +310,8 @@ export class ApparelMagicClient {
     vendors: ApparelMagicVendor[];
     lastId: string | null;
   }> {
-    const response = await this.request<ApparelMagicVendorsResponse>(
+    const response = await this.requestPost<ApparelMagicVendorsResponse>(
       'vendors',
-      'GET',
-      undefined,
       pagination
     );
     
@@ -351,7 +321,7 @@ export class ApparelMagicClient {
     };
   }
 
-  // Get all vendors (handles pagination)
+  // Get all vendors
   async getAllVendors(): Promise<ApparelMagicVendor[]> {
     const allVendors: ApparelMagicVendor[] = [];
     let lastId: string | undefined;
@@ -368,43 +338,6 @@ export class ApparelMagicClient {
     }
     
     return allVendors;
-  }
-
-  // Get product attributes
-  async getProductAttributes(pagination?: PaginationParams): Promise<{
-    attributes: any[];
-    lastId: string | null;
-  }> {
-    const response = await this.request<any>(
-      'product_attributes',
-      'GET',
-      undefined,
-      pagination
-    );
-    
-    return {
-      attributes: response.response || [],
-      lastId: response.meta?.pagination?.last_id || null,
-    };
-  }
-
-  // Get all product attributes (handles pagination)
-  async getAllProductAttributes(): Promise<any[]> {
-    const allAttributes: any[] = [];
-    let lastId: string | undefined;
-    
-    while (true) {
-      const { attributes, lastId: newLastId } = await this.getProductAttributes(
-        lastId ? { lastId } : undefined
-      );
-      
-      allAttributes.push(...attributes);
-      
-      if (!newLastId) break;
-      lastId = newLastId;
-    }
-    
-    return allAttributes;
   }
 }
 
