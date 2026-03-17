@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     // Get the first workspace with AM connection (like test-style)
     const { data: connection } = await serviceSupabase
       .from('apparelmagic_connections')
-      .select('workspace_id, subdomain, token, target_season')
+      .select('subdomain, token')
       .limit(1)
       .single();
     
