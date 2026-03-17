@@ -5,17 +5,17 @@ import { ApparelMagicClient } from '@/app/lib/apparelmagic/api';
 // Vercel Cron Job - runs daily at 6 AM ET
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const workspaceId = searchParams.get('workspaceId');
+  const subdomain = searchParams.get('subdomain');
   
-  // If workspaceId provided, return status
-  if (workspaceId) {
+  // If subdomain provided, return status
+  if (subdomain) {
     try {
       const serviceSupabase = createServiceClient();
       
       const { data: jobs } = await serviceSupabase
         .from('sync_jobs')
         .select('*')
-        .eq('workspace_id', workspaceId)
+        .eq('workspace_id', subdomain)
         .order('created_at', { ascending: false })
         .limit(1);
       
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data: connections, error: connError } = await serviceSupabase
       .from('apparelmagic_connections')
-      .select('workspace_id, subdomain, token, target_season');
+      .select('subdomain, token');
     
     if (connError || !connections || connections.length === 0) {
       console.log('[Vercel Cron] No ApparelMagic connections found');
@@ -52,14 +52,14 @@ export async function GET(request: NextRequest) {
     
     for (const conn of connections) {
       try {
-        console.log(`[Vercel Cron] Syncing workspace ${conn.workspace_id}...`);
-        const result = await syncWorkspace(conn.workspace_id, conn);
+        console.log(`[Vercel Cron] Syncing workspace...`);
+        const result = await syncWorkspace(conn.subdomain, conn);
         results.push(result);
-        console.log(`[Vercel Cron] Workspace ${conn.workspace_id} synced:`, result);
+        console.log(`[Vercel Cron] Workspace synced:`, result);
       } catch (error) {
-        console.error(`[Vercel Cron] Failed to sync workspace ${conn.workspace_id}:`, error);
+        console.error(`[Vercel Cron] Failed to sync workspace:`, error);
         results.push({
-          workspaceId: conn.workspace_id,
+          subdomain: conn.subdomain,
           success: false,
           error: String(error),
         });
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function syncWorkspace(workspaceId: string, connection: any) {
+async function syncWorkspace(subdomain: string, connection: any) {
   const serviceSupabase = createServiceClient();
   
   const client = new ApparelMagicClient({
@@ -95,7 +95,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
   const { data: job } = await serviceSupabase
     .from('sync_jobs')
     .insert({
-      workspace_id: workspaceId,
+      workspace_id: subdomain,
       job_type: 'apparelmagic_sync',
       status: 'running',
       message: 'Starting full sync...',
@@ -127,7 +127,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
         .eq('id', jobId);
       
       return {
-        workspaceId,
+        subdomain,
         success: false,
         error: 'No products found',
       };
@@ -169,7 +169,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     
     // Save products
     const transformedProducts = inventory.map((item: any) => ({
-      workspace_id: workspaceId,
+      workspace_id: subdomain,
       external_id: item.sku_id,
       name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
       sku: item.sku_concat || item.sku_id,
@@ -197,7 +197,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     
     // Save inventory
     const transformedInventory = inventory.map((item: any) => ({
-      workspace_id: workspaceId,
+      workspace_id: subdomain,
       external_id: item.sku_id,
       sku: item.sku_concat || item.sku_id,
       style: item.style_number,
@@ -233,7 +233,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       for (const item of invoice.invoice_items) {
         if (!activeSkuSet.has(item.sku_id)) continue;
         salesRecords.push({
-          workspace_id: workspaceId,
+          workspace_id: subdomain,
           external_id: item.id,
           invoice_id: invoice.invoice_id,
           sku: item.sku_id,
@@ -263,7 +263,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     await serviceSupabase
       .from('apparelmagic_connections')
       .update({ last_sync_at: new Date().toISOString() })
-      .eq('workspace_id', workspaceId);
+      .eq('workspace_id', subdomain);
     
     // Mark complete
     await serviceSupabase
@@ -281,10 +281,10 @@ async function syncWorkspace(workspaceId: string, connection: any) {
       })
       .eq('id', jobId);
     
-    console.log(`[Vercel Cron] Workspace ${workspaceId} sync complete!`);
+    console.log(`[Vercel Cron] Workspace ${subdomain} sync complete!`);
     
     return {
-      workspaceId,
+      subdomain,
       success: true,
       productsSynced: uniqueProducts.length,
       inventorySynced: uniqueInventory.length,
@@ -292,7 +292,7 @@ async function syncWorkspace(workspaceId: string, connection: any) {
     };
     
   } catch (error) {
-    console.error(`[Vercel Cron] Error syncing workspace ${workspaceId}:`, error);
+    console.error(`[Vercel Cron] Error syncing workspace ${subdomain}:`, error);
     
     await serviceSupabase
       .from('sync_jobs')
