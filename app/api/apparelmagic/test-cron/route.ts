@@ -24,14 +24,15 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    console.log('Calling getAllInventory...');
-    const inventory = await client.getAllInventory();
-    console.log(`Got ${inventory.length} items`);
+    console.log('Calling getInventory...');
+    const { inventory, lastId } = await client.getInventory();
+    console.log(`Got ${inventory.length} items, lastId: ${lastId}`);
     
     return NextResponse.json({
       workspaceId: connection.workspace_id,
       subdomain: connection.subdomain,
       inventoryCount: inventory.length,
+      lastId: lastId,
       firstFewItems: inventory.slice(0, 3).map((i: any) => ({
         sku_id: i.sku_id,
         style: i.style_number,
