@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/app/lib/supabase/service';
+import { ApparelMagicClient } from '@/app/lib/apparelmagic/api';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,9 +15,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No connections found' }, { status: 404 });
     }
     
-    const { ApparelMagicClient } = await import('@/app/lib/apparelmagic/api');
-    
-    // Test the first connection (like cron job)
     const conn = connections[0];
     console.log('Testing connection:', { workspace_id: conn.workspace_id, subdomain: conn.subdomain });
     
