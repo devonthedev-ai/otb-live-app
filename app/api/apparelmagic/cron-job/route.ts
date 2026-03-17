@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/app/lib/supabase/service';
 import { NextRequest, NextResponse } from 'next/server';
+import { ApparelMagicClient } from '@/app/lib/apparelmagic/api';
 
 // Vercel Cron Job - runs daily at 6 AM ET
 export async function GET(request: NextRequest) {
@@ -84,7 +85,6 @@ export async function GET(request: NextRequest) {
 }
 
 async function syncWorkspace(workspaceId: string, connection: any) {
-  const { ApparelMagicClient } = await import('@/app/lib/apparelmagic/api');
   const serviceSupabase = createServiceClient();
   
   const client = new ApparelMagicClient({
