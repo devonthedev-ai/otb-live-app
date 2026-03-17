@@ -6,21 +6,22 @@ export async function GET(request: NextRequest) {
   try {
     const serviceSupabase = createServiceClient();
     
-    // Get all connections (like cron job does)
-    const { data: connections } = await serviceSupabase
+    // Get the first workspace with AM connection (like test-style)
+    const { data: connection } = await serviceSupabase
       .from('apparelmagic_connections')
-      .select('workspace_id, subdomain, token, target_season');
+      .select('workspace_id, subdomain, token, target_season')
+      .limit(1)
+      .single();
     
-    if (!connections || connections.length === 0) {
-      return NextResponse.json({ error: 'No connections found' }, { status: 404 });
+    if (!connection) {
+      return NextResponse.json({ error: 'No connection found' }, { status: 404 });
     }
     
-    const conn = connections[0];
-    console.log('Testing connection:', { workspace_id: conn.workspace_id, subdomain: conn.subdomain });
+    console.log('Testing connection:', { workspace_id: connection.workspace_id, subdomain: connection.subdomain });
     
     const client = new ApparelMagicClient({
-      subdomain: conn.subdomain,
-      token: conn.token,
+      subdomain: connection.subdomain,
+      token: connection.token,
     });
     
     console.log('Calling getAllInventory...');
@@ -28,8 +29,8 @@ export async function GET(request: NextRequest) {
     console.log(`Got ${inventory.length} items`);
     
     return NextResponse.json({
-      workspaceId: conn.workspace_id,
-      subdomain: conn.subdomain,
+      workspaceId: connection.workspace_id,
+      subdomain: connection.subdomain,
       inventoryCount: inventory.length,
       firstFewItems: inventory.slice(0, 3).map((i: any) => ({
         sku_id: i.sku_id,
