@@ -37,9 +37,11 @@ export async function GET(request: NextRequest) {
   try {
     const { data: connections, error: connError } = await serviceSupabase
       .from('apparelmagic_connections')
-      .select('subdomain, token');
+      .select('subdomain, token')
+      .limit(1)
+      .single();
     
-    if (connError || !connections || connections.length === 0) {
+    if (connError || !connections) {
       console.log('[Vercel Cron] No ApparelMagic connections found');
       return NextResponse.json({
         success: true,
@@ -48,22 +50,20 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`[Vercel Cron] Found ${connections.length} workspace(s) to sync`);
+    console.log('[Vercel Cron] Found connection, starting sync...');
     
-    for (const conn of connections) {
-      try {
-        console.log(`[Vercel Cron] Syncing workspace...`);
-        const result = await syncWorkspace(conn.subdomain, conn);
-        results.push(result);
-        console.log(`[Vercel Cron] Workspace synced:`, result);
-      } catch (error) {
-        console.error(`[Vercel Cron] Failed to sync workspace:`, error);
-        results.push({
-          subdomain: conn.subdomain,
-          success: false,
-          error: String(error),
-        });
-      }
+    try {
+      console.log('[Vercel Cron] Syncing workspace...');
+      const result = await syncWorkspace(connections.subdomain, connections);
+      results.push(result);
+      console.log('[Vercel Cron] Workspace synced:', result);
+    } catch (error) {
+      console.error('[Vercel Cron] Failed to sync workspace:', error);
+      results.push({
+        subdomain: connections.subdomain,
+        success: false,
+        error: String(error),
+      });
     }
     
     const successCount = results.filter(r => r.success).length;
