@@ -67,11 +67,11 @@ export async function GET(request: NextRequest) {
     }
     
     const successCount = results.filter(r => r.success).length;
-    console.log(`[Vercel Cron] Completed. ${successCount}/${connections.length} workspaces synced successfully`);
+    console.log(`[Vercel Cron] Completed. ${successCount}/1 workspaces synced successfully`);
     
     return NextResponse.json({
       success: true,
-      message: `Synced ${successCount}/${connections.length} workspaces`,
+      message: `Synced ${successCount}/1 workspaces`,
       results,
     });
     
