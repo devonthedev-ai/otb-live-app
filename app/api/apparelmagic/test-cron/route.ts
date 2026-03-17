@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No connection found' }, { status: 404 });
     }
     
-    console.log('Testing connection:', { workspace_id: connection.workspace_id, subdomain: connection.subdomain });
+    console.log('Testing connection:', { subdomain: connection.subdomain });
     
     const client = new ApparelMagicClient({
       subdomain: connection.subdomain,
@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
     console.log(`Got ${inventory.length} items, lastId: ${lastId}`);
     
     return NextResponse.json({
-      workspaceId: connection.workspace_id,
       subdomain: connection.subdomain,
       inventoryCount: inventory.length,
       lastId: lastId,
