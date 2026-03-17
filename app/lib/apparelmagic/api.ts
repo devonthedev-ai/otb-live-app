@@ -223,12 +223,12 @@ export class ApparelMagicClient {
     return allInventory;
   }
 
-  // Get products with POST pagination
+  // Get products with GET (like inventory)
   async getProducts(pagination?: PaginationParams): Promise<{
     products: ApparelMagicProduct[];
     lastId: string | null;
   }> {
-    const response = await this.requestPost<ApparelMagicProductsResponse>(
+    const response = await this.requestGet<ApparelMagicProductsResponse>(
       'products',
       pagination
     );
