@@ -112,8 +112,8 @@ async function syncWorkspace(subdomain: string, connection: any) {
     await updateJobProgress(serviceSupabase, jobId, 'Fetching inventory...', 10);
     
     console.log(`[Vercel Cron] Fetching inventory...`);
-    const inventory = await client.getAllInventory();
-    console.log(`[Vercel Cron] Inventory: ${inventory.length} items`);
+    const { inventory, lastId } = await client.getInventory();
+    console.log(`[Vercel Cron] Inventory: ${inventory.length} items, lastId: ${lastId}`);
     
     if (inventory.length === 0) {
       await serviceSupabase
