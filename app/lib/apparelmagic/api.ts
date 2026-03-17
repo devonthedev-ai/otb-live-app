@@ -62,6 +62,8 @@ export class ApparelMagicClient {
     
     const url = `${this.baseUrl}/${endpoint}?${params.toString()}`;
     
+    console.log('[ApparelMagic] GET URL:', url.replace(this.token, '***TOKEN***'));
+    
     console.log('[ApparelMagic] GET:', endpoint, { 
       pageSize: pagination?.pageSize,
       lastId: pagination?.lastId || 'none',
