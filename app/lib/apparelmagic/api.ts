@@ -99,7 +99,7 @@ export class ApparelMagicClient {
     const requestBody: any = {
       ...this.getAuthParams(),
       pagination: {
-        page_size: pagination?.pageSize || 100,
+        page_size: pagination?.pageSize || 1000,
       },
     };
     
@@ -160,9 +160,11 @@ export class ApparelMagicClient {
     inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
+    // Default to pageSize 1000 if not specified
+    const pageSize = pagination?.pageSize || 1000;
     const response = await this.requestGet<ApparelMagicInventoryResponse>(
       'inventory',
-      pagination
+      { ...pagination, pageSize }
     );
     
     return {
