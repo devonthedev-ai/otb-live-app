@@ -43,12 +43,13 @@ export class ApparelMagicClient {
     const authParams = this.getAuthParams();
     const params = new URLSearchParams(authParams);
     
-    // Add pagination - per AM docs use pagination[page_size] and pagination[last_id]
-    if (pagination?.pageSize) {
-      params.append('pagination[page_size]', String(pagination.pageSize));
+    // Add pagination - per AM docs use paginationpage_size and paginationlast_id
+    // Only add if explicitly provided, otherwise let API use default (100)
+    if (pagination?.pageSize && pagination.pageSize !== 100) {
+      params.append('paginationpage_size', String(pagination.pageSize));
     }
     if (pagination?.lastId) {
-      params.append('pagination[last_id]', pagination.lastId);
+      params.append('paginationlast_id', pagination.lastId);
     }
     
     // Add filters (per AM docs: parameters0field, parameters0operator, parameters0value)
@@ -160,15 +161,17 @@ export class ApparelMagicClient {
     inventory: ApparelMagicInventory[];
     lastId: string | null;
   }> {
-    // Default to pageSize 1000 if not specified
-    const pageSize = pagination?.pageSize || 1000;
+    // Don't default pageSize - let API use its default (100)
     const response = await this.requestGet<ApparelMagicInventoryResponse>(
       'inventory',
-      { ...pagination, pageSize }
+      pagination
     );
     
     return {
       inventory: response.response || [],
+      lastId: response.meta?.pagination?.last_id || null,
+    };
+  }
       lastId: response.meta?.pagination?.last_id || null,
     };
   }
