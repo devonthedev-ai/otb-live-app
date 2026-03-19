@@ -29,9 +29,10 @@ export async function GET(request: NextRequest) {
     
     while (pageNum < maxPages) {
       pageNum++;
-      const { inventory, lastId: newLastId } = await client.getInventory(
-        lastId ? { lastId, pageSize: 1000 } : { pageSize: 1000 }
-      );
+      // First request without pagination params, subsequent with last_id
+      const { inventory, lastId: newLastId } = lastId 
+        ? await client.getInventory({ lastId })
+        : await client.getInventory();
       
       console.log(`Page ${pageNum}: ${inventory.length} items, lastId: ${newLastId}`);
       
