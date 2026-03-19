@@ -172,9 +172,6 @@ export class ApparelMagicClient {
       lastId: response.meta?.pagination?.last_id || null,
     };
   }
-      lastId: response.meta?.pagination?.last_id || null,
-    };
-  }
 
   // Get inventory filtered by style number
   async getInventoryByStyle(styleNumber: string): Promise<ApparelMagicInventory[]> {
