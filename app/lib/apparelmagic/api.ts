@@ -43,12 +43,12 @@ export class ApparelMagicClient {
     const authParams = this.getAuthParams();
     const params = new URLSearchParams(authParams);
     
-    // Add pagination
+    // Add pagination - must use paginationpage_size and paginationlast_id per AM docs
     if (pagination?.pageSize) {
-      params.append('page_size', String(pagination.pageSize));
+      params.append('paginationpage_size', String(pagination.pageSize));
     }
     if (pagination?.lastId) {
-      params.append('last_id', pagination.lastId);
+      params.append('paginationlast_id', pagination.lastId);
     }
     
     // Add filters (per AM docs: parameters0field, parameters0operator, parameters0value)
