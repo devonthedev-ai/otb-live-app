@@ -45,8 +45,10 @@ export class ApparelMagicClient {
     
     // Add pagination - per AM docs use paginationpage_size and paginationlast_id
     // Only add if explicitly provided, otherwise let API use default (100)
+    console.log('[ApparelMagic] Requesting pageSize:', pagination?.pageSize);
     if (pagination?.pageSize && pagination.pageSize !== 100) {
       params.append('paginationpage_size', String(pagination.pageSize));
+      console.log('[ApparelMagic] Added paginationpage_size:', pagination.pageSize);
     }
     if (pagination?.lastId) {
       params.append('paginationlast_id', pagination.lastId);
