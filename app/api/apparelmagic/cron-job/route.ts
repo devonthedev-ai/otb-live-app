@@ -58,9 +58,9 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    // Fetch inventory (inline like test-cron)
+    // Fetch inventory with page_size 1000
     console.log('[Vercel Cron] Fetching inventory...');
-    const { inventory, lastId } = await client.getInventory();
+    const { inventory, lastId } = await client.getInventory({ pageSize: 1000 });
     console.log(`[Vercel Cron] Got ${inventory.length} items, lastId: ${lastId}`);
     
     if (inventory.length === 0) {
