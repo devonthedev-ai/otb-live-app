@@ -1,8 +1,7 @@
-import { createServiceClient } from '@/app/lib/supabase/service';
 import { NextRequest, NextResponse } from 'next/server';
+import { createServiceClient } from '@/app/lib/supabase/service';
 import { ApparelMagicClient } from '@/app/lib/apparelmagic/api';
 
-// Vercel Cron Job - runs daily at 6 AM ET
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const workspaceId = searchParams.get('workspaceId');
@@ -35,13 +34,13 @@ export async function GET(request: NextRequest) {
   
   try {
     // Get connection (using .single() like test-cron)
-    const { data: connection, error: connError } = await serviceSupabase
+    const { data: connection } = await serviceSupabase
       .from('apparelmagic_connections')
       .select('subdomain, token')
       .limit(1)
       .single();
     
-    if (connError || !connection) {
+    if (!connection) {
       console.log('[Vercel Cron] No ApparelMagic connection found');
       return NextResponse.json({
         success: true,
@@ -52,13 +51,11 @@ export async function GET(request: NextRequest) {
     
     console.log('[Vercel Cron] Syncing subdomain:', connection.subdomain);
     
-    // Create client
     const client = new ApparelMagicClient({
       subdomain: connection.subdomain,
       token: connection.token,
     });
     
-    // Fetch inventory (no pageSize to use API default of 100)
     console.log('[Vercel Cron] Fetching inventory...');
     const { inventory, lastId } = await client.getInventory();
     console.log(`[Vercel Cron] Got ${inventory.length} items, lastId: ${lastId}`);
