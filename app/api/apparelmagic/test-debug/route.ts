@@ -27,49 +27,36 @@ export async function GET(request: NextRequest) {
     });
     const data1 = await resp1.json();
     
-    // Test 2: Request with paginationlast_id=123
-    const url2 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=123`;
-    console.log('Request 2 (last_id=123):', url2.replace(connection.token, '***TOKEN***'));
+    // Test 2: Request with paginationpage_size=1000
+    const url2 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationpage_size=1000`;
+    console.log('Request 2 (page_size=1000):', url2.replace(connection.token, '***TOKEN***'));
     
     const resp2 = await fetch(url2, {
       headers: { 'User-Agent': 'OTB-Live/1.0' },
     });
     const data2 = await resp2.json();
     
-    // Test 3: Request with paginationlast_id=2
-    const url3 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=2`;
-    console.log('Request 3 (last_id=2):', url3.replace(connection.token, '***TOKEN***'));
+    // Test 3: Request with both page_size=1000 AND last_id=123
+    const url3 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationpage_size=1000&paginationlast_id=123`;
+    console.log('Request 3 (page_size=1000 + last_id=123):', url3.replace(connection.token, '***TOKEN***'));
     
     const resp3 = await fetch(url3, {
       headers: { 'User-Agent': 'OTB-Live/1.0' },
     });
     const data3 = await resp3.json();
     
-    // Test 4: Request with paginationlast_id=124 (next after 123)
-    const url4 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=124`;
-    console.log('Request 4 (last_id=124):', url4.replace(connection.token, '***TOKEN***'));
-    
-    const resp4 = await fetch(url4, {
-      headers: { 'User-Agent': 'OTB-Live/1.0' },
-    });
-    const data4 = await resp4.json();
-    
     return NextResponse.json({
-      request1: {
+      request1_default: {
         itemCount: data1.response?.length || 0,
         lastId: data1.meta?.pagination?.last_id || null,
       },
-      request2_lastId123: {
+      request2_pageSize1000: {
         itemCount: data2.response?.length || 0,
         lastId: data2.meta?.pagination?.last_id || null,
       },
-      request3_lastId2: {
+      request3_pageSize1000_and_lastId: {
         itemCount: data3.response?.length || 0,
         lastId: data3.meta?.pagination?.last_id || null,
-      },
-      request4_lastId124: {
-        itemCount: data4.response?.length || 0,
-        lastId: data4.meta?.pagination?.last_id || null,
       },
     });
     
