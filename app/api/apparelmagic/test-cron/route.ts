@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    console.log('Calling getInventory...');
-    const { inventory, lastId } = await client.getInventory();
+    console.log('Calling getInventory with pageSize 1000...');
+    const { inventory, lastId } = await client.getInventory({ pageSize: 1000 });
     console.log(`Got ${inventory.length} items, lastId: ${lastId}`);
     
     return NextResponse.json({
