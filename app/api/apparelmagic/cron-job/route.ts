@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const serviceSupabase = createServiceClient();
   
   try {
-    // Get connection (using .single() like test-cron)
+    // Get connection
     const { data: connection } = await serviceSupabase
       .from('apparelmagic_connections')
       .select('subdomain, token')
@@ -56,11 +56,35 @@ export async function GET(request: NextRequest) {
       token: connection.token,
     });
     
-    console.log('[Vercel Cron] Fetching inventory...');
-    const { inventory, lastId } = await client.getInventory();
-    console.log(`[Vercel Cron] Got ${inventory.length} items, lastId: ${lastId}`);
+    // Fetch ALL inventory with pagination
+    console.log('[Vercel Cron] Fetching all inventory...');
+    const allInventory: any[] = [];
+    let lastId: string | undefined;
+    let pageNum = 0;
+    const maxPages = 20; // Safety limit (2000 items max)
     
-    if (inventory.length === 0) {
+    while (pageNum < maxPages) {
+      pageNum++;
+      const { inventory, lastId: newLastId } = lastId
+        ? await client.getInventory({ lastId })
+        : await client.getInventory();
+      
+      console.log(`[Vercel Cron] Page ${pageNum}: ${inventory.length} items, lastId: ${newLastId}`);
+      
+      if (inventory.length === 0) break;
+      
+      allInventory.push(...inventory);
+      
+      if (!newLastId || newLastId === lastId) break;
+      lastId = newLastId;
+      
+      // Rate limiting - wait 250ms between requests
+      await new Promise(r => setTimeout(r, 250));
+    }
+    
+    console.log(`[Vercel Cron] Total: ${allInventory.length} items from ${pageNum} pages`);
+    
+    if (allInventory.length === 0) {
       return NextResponse.json({
         success: true,
         message: 'No products found',
@@ -71,7 +95,7 @@ export async function GET(request: NextRequest) {
     // Save to database
     console.log('[Vercel Cron] Saving to database...');
     
-    const transformedProducts = inventory.map((item: any) => ({
+    const transformedProducts = allInventory.map((item: any) => ({
       workspace_id: connection.subdomain,
       external_id: item.sku_id,
       name: `${item.style_number} ${item.attr_2 || ''} ${item.size || ''}`.trim(),
@@ -105,6 +129,7 @@ export async function GET(request: NextRequest) {
         subdomain: connection.subdomain,
         success: true,
         productsSynced: uniqueProducts.length,
+        pagesFetched: pageNum,
       }],
     });
     
