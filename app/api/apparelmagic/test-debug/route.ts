@@ -27,31 +27,50 @@ export async function GET(request: NextRequest) {
     });
     const data1 = await resp1.json();
     
-    // Test 2: Request with paginationlast_id if we got one
-    let data2 = null;
-    const lastId1 = data1.meta?.pagination?.last_id;
+    // Test 2: Request with paginationlast_id=123
+    const url2 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=123`;
+    console.log('Request 2 (last_id=123):', url2.replace(connection.token, '***TOKEN***'));
     
-    if (lastId1) {
-      const url2 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=${lastId1}`;
-      console.log('Request 2:', url2.replace(connection.token, '***TOKEN***'));
-      
-      const resp2 = await fetch(url2, {
-        headers: { 'User-Agent': 'OTB-Live/1.0' },
-      });
-      data2 = await resp2.json();
-    }
+    const resp2 = await fetch(url2, {
+      headers: { 'User-Agent': 'OTB-Live/1.0' },
+    });
+    const data2 = await resp2.json();
+    
+    // Test 3: Request with paginationlast_id=2
+    const url3 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=2`;
+    console.log('Request 3 (last_id=2):', url3.replace(connection.token, '***TOKEN***'));
+    
+    const resp3 = await fetch(url3, {
+      headers: { 'User-Agent': 'OTB-Live/1.0' },
+    });
+    const data3 = await resp3.json();
+    
+    // Test 4: Request with paginationlast_id=124 (next after 123)
+    const url4 = `${baseUrl}/inventory?time=${time}&token=${connection.token}&paginationlast_id=124`;
+    console.log('Request 4 (last_id=124):', url4.replace(connection.token, '***TOKEN***'));
+    
+    const resp4 = await fetch(url4, {
+      headers: { 'User-Agent': 'OTB-Live/1.0' },
+    });
+    const data4 = await resp4.json();
     
     return NextResponse.json({
       request1: {
-        url: url1.replace(connection.token, '***TOKEN***'),
         itemCount: data1.response?.length || 0,
         lastId: data1.meta?.pagination?.last_id || null,
       },
-      request2: data2 ? {
-        url: `${baseUrl}/inventory?time=${time}&token=***TOKEN***&paginationlast_id=${lastId1}`,
+      request2_lastId123: {
         itemCount: data2.response?.length || 0,
         lastId: data2.meta?.pagination?.last_id || null,
-      } : null,
+      },
+      request3_lastId2: {
+        itemCount: data3.response?.length || 0,
+        lastId: data3.meta?.pagination?.last_id || null,
+      },
+      request4_lastId124: {
+        itemCount: data4.response?.length || 0,
+        lastId: data4.meta?.pagination?.last_id || null,
+      },
     });
     
   } catch (error) {
