@@ -44,7 +44,7 @@ export class ApparelMagicClient {
     const params = new URLSearchParams(authParams);
     
     // Add pagination - per AM docs use paginationpage_size and paginationlast_id
-    if (pagination?.pageSize) {
+    if (pagination?.pageSize && pagination.pageSize !== 100) {
       params.append('paginationpage_size', String(pagination.pageSize));
     }
     if (pagination?.lastId) {
