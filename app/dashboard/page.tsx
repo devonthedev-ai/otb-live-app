@@ -474,6 +474,13 @@ export default function Dashboard() {
                       Last sync: {new Date(lastSync).toLocaleString()}
                     </p>
                   )}
+                  {/* CSV Upload Link */}
+                  <a 
+                    href="/csv-upload" 
+                    className="text-xs text-blue-600 hover:text-blue-800 ml-2 underline"
+                  >
+                    Upload CSV
+                  </a>
                   {syncStatus && (syncStatus.status === 'running' || syncStatus.status === 'pending') && (
                     <div className="flex items-center gap-2 text-xs text-blue-600">
                       <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
