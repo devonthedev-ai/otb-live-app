@@ -86,14 +86,42 @@ export async function POST(request: NextRequest) {
         '0'
       ) || 0;
       
-      // Try to find Quantity (might not be in the export - default to 0)
-      const qty = parseInt(
-        record['Qty'] || 
+      // Try to find Quantity (inventory fields from ApparelMagic)
+      const qtyInventory = parseInt(
+        record['Qty Inventory (on hand)'] || 
         record['QTY'] || 
         record['On Hand'] || 
         record['Quantity'] || 
         '0'
       ) || 0;
+
+      // Qty Open Sales (demand not fulfilled)
+      const qtyOpenSales = parseInt(
+        record['Qty Open Sales (demand not fulfilled)'] ||
+        record['Qty Open Sales'] ||
+        record['Open Sales'] ||
+        '0'
+      ) || 0;
+
+      // Qty WIP (in production)
+      const qtyWIP = parseInt(
+        record['Qty WIP (in production)'] ||
+        record['Qty WIP'] ||
+        record['WIP'] ||
+        '0'
+      ) || 0;
+
+      // Qty Avail Sell (available)
+      const qtyAvailSell = parseInt(
+        record['Qty Avail Sell (available)'] ||
+        record['Qty Avail Sell'] ||
+        record['Available'] ||
+        record['Qty Available'] ||
+        '0'
+      ) || 0;
+
+      // Use Qty Avail Sell as primary quantity, fallback to Qty Inventory
+      const qty = qtyAvailSell || qtyInventory;
       
       // Build product name from components
       const nameParts = [style, color, size, attr2].filter(Boolean);
