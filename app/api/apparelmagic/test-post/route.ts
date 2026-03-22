@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const baseUrl = `https://${connection.subdomain}.app.apparelmagic.com/api/json`;
     const time = String(Math.floor(Date.now() / 1000));
     
-    // Test POST with pagination in body
+    // Test POST /products with pagination in body (inventory doesn't support POST)
     const requestBody = {
       time: time,
       token: connection.token,
@@ -27,9 +27,9 @@ export async function GET(request: NextRequest) {
       },
     };
     
-    console.log('POST Request Body:', JSON.stringify(requestBody).replace(connection.token, '***TOKEN***'));
+    console.log('POST /products Request Body:', JSON.stringify(requestBody).replace(connection.token, '***TOKEN***'));
     
-    const resp = await fetch(`${baseUrl}/inventory`, {
+    const resp = await fetch(`${baseUrl}/products`, {
       method: 'POST',
       headers: {
         'User-Agent': 'OTB-Live/1.0',
@@ -40,18 +40,42 @@ export async function GET(request: NextRequest) {
     
     const data = await resp.json();
     
-    return NextResponse.json({
-      method: 'POST',
-      requestBody: {
+    // Test page 2 if we got last_id
+    let data2 = null;
+    const lastId1 = data.meta?.pagination?.last_id;
+    
+    if (lastId1 && data.response?.length > 0) {
+      const requestBody2 = {
         time: time,
-        token: '***TOKEN***',
-        pagination: { page_size: 1000 },
-      },
-      response: {
-        status: resp.status,
+        token: connection.token,
+        pagination: {
+          page_size: 1000,
+          last_id: String(lastId1),
+        },
+      };
+      
+      const resp2 = await fetch(`${baseUrl}/products`, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'OTB-Live/1.0',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody2),
+      });
+      
+      data2 = await resp2.json();
+    }
+    
+    return NextResponse.json({
+      page1: {
         itemCount: data.response?.length || 0,
         lastId: data.meta?.pagination?.last_id || null,
       },
+      page2: data2 ? {
+        itemCount: data2.response?.length || 0,
+        lastId: data2.meta?.pagination?.last_id || null,
+      } : null,
+      totalItems: (data.response?.length || 0) + (data2?.response?.length || 0),
     });
     
   } catch (error) {
