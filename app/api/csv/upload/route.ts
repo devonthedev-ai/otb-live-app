@@ -158,14 +158,25 @@ export async function POST(request: NextRequest) {
     }
     
     // Upsert to database
+    console.log('[CSV Upload] Attempting to save', products.length, 'products');
+    console.log('[CSV Upload] First product sample:', JSON.stringify(products[0], null, 2));
+    
     const { data, error } = await serviceSupabase
       .from('products')
       .upsert(products, { onConflict: 'workspace_id,sku' });
     
     if (error) {
       console.error('[CSV Upload] Database error:', error);
+      console.error('[CSV Upload] Error code:', error.code);
+      console.error('[CSV Upload] Error details:', error.details);
+      console.error('[CSV Upload] Error hint:', error.hint);
       return NextResponse.json(
-        { error: 'Failed to save products', details: error.message },
+        { 
+          error: 'Failed to save products', 
+          details: error.message,
+          code: error.code,
+          hint: error.hint
+        },
         { status: 500 }
       );
     }
