@@ -7,6 +7,7 @@ export default function CSVUploadPage() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,6 +15,7 @@ export default function CSVUploadPage() {
 
     setUploading(true);
     setError(null);
+    setErrorDetails(null);
     setResult(null);
 
     try {
@@ -28,6 +30,7 @@ export default function CSVUploadPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        setErrorDetails(data);
         throw new Error(data.error || 'Upload failed');
       }
 
@@ -77,6 +80,13 @@ export default function CSVUploadPage() {
       {error && (
         <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-lg">
           <strong>Error:</strong> {error}
+          {errorDetails?.details && (
+            <div className="mt-2 text-sm">
+              <p><strong>Details:</strong> {errorDetails.details}</p>
+              {errorDetails.code && <p><strong>Code:</strong> {errorDetails.code}</p>}
+              {errorDetails.hint && <p><strong>Hint:</strong> {errorDetails.hint}</p>}
+            </div>
+          )}
         </div>
       )}
 
